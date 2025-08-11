@@ -10,18 +10,19 @@ SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
 client = gspread.authorize(creds)
-sheet = client.open(SHEET_NAME).sheet1  # First tab
+sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
+# options.add_argument("--headless")  # Uncomment for headless
 driver = webdriver.Firefox(options=options)
 driver.get("https://publish.buffer.com/all-channels?tab=sent")
 
 input("Log in to Buffer, then press Enter here...")
 
-time.sleep(5)  # Initial load
+time.sleep(5)
 
-# --- Auto scroll to load all posts ---
+# --- Auto scroll ---
 last_height = driver.execute_script("return document.body.scrollHeight")
 while True:
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -33,21 +34,29 @@ while True:
 
 print("✅ Finished scrolling")
 
-# --- Scrape posts ---
+# --- Scrape ---
 wrapper = driver.find_element(By.CLASS_NAME, "publish_timeline_qL9zu")
 elements = wrapper.find_elements(By.XPATH, "./*")
 
-data = [["Date", "Time", "Post", "Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Engagment"]]  # Header row
+# Header row
+data = [["Date", "Time", "Platform", "Post", "Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Eng. Rate"]]
 current_date = None
 
 for block in elements:
     class_name = block.get_attribute("class")
 
+    # Date header
     if "publish_base_Y1USt" in class_name:
         current_date = block.text.strip()
         continue
 
+    # Post container
     if "publish_postContainer" in class_name or "publish_wrapper_KDBT-" in class_name:
+        try:
+            platform_elem = block.find_element(By.CSS_SELECTOR, 'div[data-channel]')
+            platform_info = platform_elem.get_attribute("data-channel")
+        except:
+            platform_info = ""
         try:
             time_text = block.find_element(By.CLASS_NAME, "publish_labelContainer_NIys3").text.strip()
         except:
@@ -57,16 +66,53 @@ for block in elements:
         except:
             post_text = ""
         try:
-            metrics_info = block.find_element(By.CLASS_NAME, "publish_metricsWrapper_vZFc6").text.strip()
+            platform = block.find_element(By.CLASS_NAME, "publish_channelName_MobA0").text.strip()
         except:
-            metrics_info = ""
+            platform = ""
 
-        data.append([current_date, time_text, post_text, metrics_info])
+        # Metrics dictionary
+        metrics = {
+            "Likes": "",
+            "Reactions": "",
+            "Comments": "",
+            "Impressions": "",
+            "Shares": "",
+            "Clicks": "",
+            "Eng. Rate": ""
+        }
+
+        try:
+            metric_wrappers = block.find_elements(By.CLASS_NAME, "publish_wrapper_6Zayg")
+            for m in metric_wrappers:
+                try:
+                    label = m.find_element(By.CLASS_NAME, "publish_label_79dYt").text.strip()
+                    value = m.find_element(By.CLASS_NAME, "publish_metric_3fmE3").text.strip()
+                    metrics[label] = value
+                except:
+                    pass
+        except:
+            pass
+
+        # Merge Likes/Reactions into one column for sheet
+        likes_reactions = metrics.get("Likes") or metrics.get("Reactions")
+        clicks_eng = metrics.get("Clicks") or metrics.get("Eng. Rate")
+
+        data.append([
+            current_date,
+            time_text,
+            platform_info,
+            post_text,
+            likes_reactions,
+            metrics.get("Comments"),
+            metrics.get("Impressions"),
+            metrics.get("Shares"),
+            clicks_eng
+        ])
 
 driver.quit()
 
 # --- Upload to Google Sheets ---
-sheet.clear() 
+sheet.clear()
 sheet.update("A1", data)
 
 print(f"✅ Uploaded {len(data)-1} posts to Google Sheet: {SHEET_NAME}")
