@@ -6,7 +6,7 @@ social_conn = st.connection("social_gsheets", type=GSheetsConnection)
 social_df = social_conn.read()
 
 # Connect to the private sheet
-sales_conn = st.connection("thinkific_gsheets", type=GSheetsConnection)
+sales_conn = st.connection("sales_gsheets", type=GSheetsConnection)
 sales_df = sales_conn.read()
 
 
@@ -16,11 +16,17 @@ st.title("Linguistpd Sales Analytics")
 
 
 # ========Content========
-tab_main, tab_sales, tab_social = st.tabs(["📈 Analytics", "🗃 Sales Data", "🗃 Social Data"])
+tab_main, tab_sales, tab_social = st.tabs(["📈 Analytics", "Sales Data", "Social Data"])
 with tab_main:
     st.header("Sales x Post by Date")
+
     options = ["Sales", "Posts", "Limited Time Sales"]
     selection = st.pills("Graph View", options, selection_mode="multi")
+
+    #y-date x-amount of sales
+    #with plots of the social media posts (togelable through pills)
+    st.line_chart()
+    
     sale_date_range = st.date_input("Date Range of Sale")
 
 with tab_sales:
