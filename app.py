@@ -31,6 +31,7 @@ def normalize_dates(date_str):
         # Try normal parsing for the rest
         try:
             return pd.to_datetime(date_str, dayfirst=True).date()
+
         except Exception:
             return None
 
@@ -124,13 +125,15 @@ with tab_main:
         (sales_df["Date"] >= start_date) & (sales_df["Date"] <= end_date)
     ]
 
+    
     # Aggregate sales count per year
     sales_yearly = sales_filtered.groupby(
         sales_filtered["Date and Time"].dt.month
     ).size().reset_index(name="Sales Count")
 
+
     # Chart
-    chart = alt.Chart(sales_yearly).mark_line(point=True).encode(
+    sales_chart = alt.Chart(sales_yearly).mark_line(point=True).encode(
         x=alt.X("Date and Time:O", title="Month"),
         y=alt.Y("Sales Count:Q", title="Number of Sales"),
         tooltip=["Date and Time", "Sales Count"]
@@ -138,8 +141,23 @@ with tab_main:
         title="Yearly Sales Count"
     )
 
-    st.altair_chart(chart, use_container_width=True)
 
+    social_chart = alt.Chart(social_df).mark_point(size=80, filled=True).encode(
+        x=alt.X("Date:T"),
+        y=alt.value(0),
+        color="Platform:N",
+        shape="Platform:N",
+        tooltip=["Date", "Platform"]
+    )
+
+
+    st.altair_chart(social_chart, use_container_width=True)
+
+    
+    combined_chart = alt.layer(social_chart, sales_chart)
+    st.altair_chart(sales_chart, use_container_width=True)
+
+    st.altair_chart(combined_chart, use_container_width=True)
 with tab_sales:
     st.header("Sales Data")
     st.dataframe(sales_df)
@@ -150,7 +168,6 @@ with tab_social:
 
 with  tab_email:
     st.header("Email Markting Data")
-
 
 st.divider()
 st.button("Run Scraper")

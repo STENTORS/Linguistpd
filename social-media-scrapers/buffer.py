@@ -4,6 +4,8 @@ from selenium.webdriver.common.by import By
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+
+
 # ---------------- GOOGLE SHEETS SETUP ----------------
 SHEET_NAME = "LinguistPd"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -39,7 +41,7 @@ wrapper = driver.find_element(By.CLASS_NAME, "publish_timeline_qL9zu")
 elements = wrapper.find_elements(By.XPATH, "./*")
 
 # Header row
-data = [["Date", "Time", "Platform", "Post", "Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Eng. Rate"]]
+data = [["Date", "Time", "Platform", "Post", "Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Eng. Rate", "Total Social Score"]]
 current_date = None
 
 for block in elements:
@@ -87,7 +89,11 @@ for block in elements:
                 try:
                     label = m.find_element(By.CLASS_NAME, "publish_label_79dYt").text.strip()
                     value = m.find_element(By.CLASS_NAME, "publish_metric_3fmE3").text.strip()
+
+                    if value == "no data available" or value == "-" or value == "no data available-":
+                        value = 0
                     metrics[label] = value
+                    
                 except:
                     pass
         except:
@@ -96,6 +102,8 @@ for block in elements:
         # Merge Likes/Reactions into one column for sheet
         likes_reactions = metrics.get("Likes") or metrics.get("Reactions")
         clicks_eng = metrics.get("Clicks") or metrics.get("Eng. Rate")
+
+        social_score = likes_reactions + clicks_eng + metrics.get("Comments") + metrics.get("Impressions") + metrics.get("Shares")
 
         data.append([
             current_date,
@@ -106,7 +114,8 @@ for block in elements:
             metrics.get("Comments"),
             metrics.get("Impressions"),
             metrics.get("Shares"),
-            clicks_eng
+            clicks_eng,
+            social_score
         ])
 
 driver.quit()
@@ -114,5 +123,4 @@ driver.quit()
 # --- Upload to Google Sheets ---
 sheet.clear()
 sheet.update("A1", data)
-
 print(f"✅ Uploaded {len(data)-1} posts to Google Sheet: {SHEET_NAME}")
