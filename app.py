@@ -6,158 +6,210 @@ from datetime import datetime, timedelta
 import os
 import hmac
 from dotenv import load_dotenv
+import calendar
+from dateutil import parser
+
 load_dotenv()
 
-#===========Sheet Connections===========
-# Connect to the public sheet
+# =========== Sheet Connections ==========
 social_conn = st.connection("social_gsheets", type=GSheetsConnection)
 social_df = social_conn.read()
 
-# Connect to the private sheet
 sales_conn = st.connection("sales_gsheets", type=GSheetsConnection)
 sales_df = sales_conn.read()
 
-def normalize_dates(date_str):
-    date_str = str(date_str).strip()
-    today = datetime.today().date()
-    
-    if date_str.lower().startswith("yesterday"):
-        # e.g. "Yesterday, 8 August"
-        # Just return yesterday's date
-        return today - timedelta(days=1)
-    elif date_str.lower().startswith("today"):
-        return today
-    else:
-        # Try normal parsing for the rest
-        try:
-            return pd.to_datetime(date_str, dayfirst=True).date()
-
-        except Exception:
-            return None
-
-
+# =========== Password Check ==========
 def check_password():
     """Returns `True` if the user had a correct password."""
-
     def login_form():
-        """Form to collect username & password"""
         with st.form("Credentials"):
             st.text_input("Username", key="username")
             st.text_input("Password", type="password", key="password")
             st.form_submit_button("Log in", on_click=password_entered)
 
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if os.environ.get(f"{st.session_state["username"].upper()}_STREAMLIT_PASSWORD") \
+        if os.environ.get(f"{st.session_state['username'].upper()}_STREAMLIT_PASSWORD") \
             and hmac.compare_digest(
-            st.session_state["password"],
-            os.environ.get(f"{st.session_state["username"].upper()}_STREAMLIT_PASSWORD")
-        ):
+                st.session_state["password"],
+                os.environ.get(f"{st.session_state['username'].upper()}_STREAMLIT_PASSWORD")
+            ):
             st.session_state["password_correct"] = True
-            # Don't store the username or password in the session
             del st.session_state["password"]
             del st.session_state["username"]
         else:
             st.session_state["password_correct"] = False
 
-    # Return True if the username + password is validated.
     if st.session_state.get("password_correct", False):
         return True
 
-    # Show inputs for username + password.
     login_form()
     if "password_correct" in st.session_state:
-        st.error("😕 Incorrrect Admin Credentials")
+        st.error("😕 Incorrect Admin Credentials")
     return False
 
+# =========== Date Parsing Functions ==========
+def parse_social_date(date_str):
+    """Parse social media date strings like 'Today, 15 August' into datetime objects"""
+    try:
+        # Handle "Today" and "Yesterday" cases
+        today = datetime.now().date()
+        if date_str.startswith("Today"):
+            return today
+        elif date_str.startswith("Yesterday"):
+            return today - timedelta(days=1)
+        
+        # Handle day names (e.g., "Tuesday, 12 August")
+        date_str = date_str.split(", ")[-1]  # Get the "15 August" part
+        return parser.parse(date_str).date()
+    except:
+        return None
 
-#===========Main Application===========
-social_df["Date"] = social_df["Date"].apply(normalize_dates)
+# =========== Data Processing Functions ==========
+def prepare_sales_data(df):
+    """Process sales data and aggregate by month"""
+    df["Date and Time"] = pd.to_datetime(df["Date and Time"], errors="coerce")
+    df["Year"] = df["Date and Time"].dt.year
+    df["Month"] = df["Date and Time"].dt.month
+    
+    # Aggregate sales by month
+    monthly_sales = df.groupby(["Year", "Month"]).agg({
+        "Amount": "sum"
+    }).reset_index()
+    
+    # Create proper date column for plotting (first day of each month)
+    monthly_sales["Date"] = pd.to_datetime(
+        monthly_sales[["Year", "Month"]].assign(DAY=1)
+    )
+    monthly_sales["Month_Name"] = monthly_sales["Month"].apply(
+        lambda x: calendar.month_abbr[x]
+    )
+    return monthly_sales
 
-#========Header========
+def prepare_social_data(df):
+    """Process social data and aggregate by month"""
+    # Parse dates
+    df["Parsed_Date"] = df["Date"].apply(parse_social_date)
+    df = df.dropna(subset=["Parsed_Date"])
+    df["Parsed_Date"] = pd.to_datetime(df["Parsed_Date"])
+    
+    # Extract year and month
+    df["Year"] = df["Parsed_Date"].dt.year
+    df["Month"] = df["Parsed_Date"].dt.month
+    
+    # Define engagement columns
+    engagement_columns = ["Comments", "Impressions", "Shares", "Clicks/Eng. Rate"]
+    
+    # Clean and convert engagement data
+    for col in engagement_columns:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+            df[col] = df[col].apply(
+                lambda x: 0 if "no data available" in x.lower() else x
+            )
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    df["Total_Score"] = df[engagement_columns].sum(axis=1)
+    
+    # Aggregate by month
+    monthly_social = df.groupby(["Year", "Month"]).agg({
+        "Total_Score": "sum"
+    }).reset_index()
+    
+    # Create proper date column for plotting (first day of each month)
+    monthly_social["Date"] = pd.to_datetime(
+        monthly_social[["Year", "Month"]].assign(DAY=1)
+    )
+    monthly_social["Month_Name"] = monthly_social["Month"].apply(
+        lambda x: calendar.month_abbr[x]
+    )
+    return monthly_social
+
+# =========== Main Application ==========
 st.logo("lpd-logo.png", size="large")
 st.title("Linguistpd Admin Dashboard")
 
-#========login system========
+# Login system
 if not check_password():
     st.stop()
 
-# ========Content========
-tab_main, tab_sales, tab_social, tab_email = st.tabs(["📈 Analytics", "Sales Data", "Social Data", "Email Marketing"])
+# Process data
+monthly_sales = prepare_sales_data(sales_df)
+monthly_social = prepare_social_data(social_df)
 
-with st.sidebar:
-    st.button("Reload Scraper")
-    st.button("Customer Sales Tracker")
-    st.button("Amalytics")
-    st.button("raw data")
+# Get available years from data
+available_years = sorted(
+    set(monthly_sales["Year"].unique()).union(
+        set(monthly_social["Year"].unique())
+    )
+)
+selected_year = st.sidebar.selectbox(
+    "Select Year", 
+    available_years, 
+    index=len(available_years)-1
+)
+
+# Filter data by selected year
+sales_filtered = monthly_sales[monthly_sales["Year"] == selected_year]
+social_filtered = monthly_social[monthly_social["Year"] == selected_year]
+
+# Combine data for shared x-axis
+combined_data = pd.concat([
+    sales_filtered.assign(Type="Sales"),
+    social_filtered.assign(Type="Social")
+])
+
+# =========== Content ==========
+tab_main, tab_sales, tab_social, tab_email = st.tabs([
+    "📈 Analytics", "Sales Data", "Social Data", "Email Marketing"
+])
 
 with tab_main:
-
-    st.header("Sales x Post by Date")
-
-    #==============Graph Options==============
-    #  Platform selection pills
-    platforms = ["Sale Period", "LinkedIn", "Twitter", "Facebook"]
-
-    selected_platforms = st.multiselect(
-        "Graph View Options",
-        platforms,
-        default=platforms 
-    )
-
-    #==============Graph View==============
-    # Parse dates
-    sales_df["Date and Time"] = pd.to_datetime(sales_df["Date and Time"], errors="coerce")
-    sales_df["Date"] = sales_df["Date and Time"].dt.date
-
-    # Date range selector
-    min_date = sales_df["Date"].min()
-    max_date = sales_df["Date"].max()
-    start_date, end_date = st.date_input(
-        "Select date range:",
-        [min_date, max_date],
-        min_value=min_date,
-        max_value=max_date
-    )
-
-    # Filter by range
-    sales_filtered = sales_df[
-        (sales_df["Date"] >= start_date) & (sales_df["Date"] <= end_date)
-    ]
-
+    st.header(f"Sales vs Social Performance ({selected_year})")
     
-    # Aggregate sales count per year
-    sales_yearly = sales_filtered.groupby(
-        sales_filtered["Date and Time"].dt.month
-    ).size().reset_index(name="Sales Count")
+    if not combined_data.empty:
+        # Create base chart with shared x-axis
+        base = alt.Chart(combined_data).encode(
+            x=alt.X('month(Date):T', title='Month', axis=alt.Axis(format='%b'))
+        )
+        
+        # Sales line
+        sales_line = base.transform_filter(
+            alt.datum.Type == "Sales"
+        ).mark_line(color='blue').encode(
+            y=alt.Y('Amount:Q', title='Sales Amount', scale=alt.Scale(zero=False)),
+            tooltip=['Month_Name', 'Year', 'Amount']
+        )
+        
+        # Social scatter
+        social_scatter = base.transform_filter(
+            alt.datum.Type == "Social"
+        ).mark_circle(color='red', size=60).encode(
+            y=alt.Y('Total_Score:Q', title='Social Score', scale=alt.Scale(zero=False)),
+            tooltip=['Month_Name', 'Year', 'Total_Score']
+        )
+        
+        # Combine charts
+        combined_chart = alt.layer(sales_line, social_scatter).resolve_scale(
+            y='independent'
+        ).properties(
+            width=800,
+            height=400
+        )
+        
+        st.altair_chart(combined_chart, use_container_width=True)
+        
+        # Metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            total_sales = sales_filtered["Amount"].sum()
+            st.metric("Total Sales", f"${total_sales:,.2f}")
+        
+        with col2:
+            total_social = social_filtered["Total_Score"].sum()
+            st.metric("Total Social Score", f"{total_social:,.0f}")
+    else:
+        st.warning("No data available for the selected year.")
 
-
-    # Chart
-    sales_chart = alt.Chart(sales_yearly).mark_line(point=True).encode(
-        x=alt.X("Date and Time:O", title="Month"),
-        y=alt.Y("Sales Count:Q", title="Number of Sales"),
-        tooltip=["Date and Time", "Sales Count"]
-    ).properties(
-        title="Yearly Sales Count"
-    )
-
-
-    social_chart = alt.Chart(social_df).mark_point(size=80, filled=True).encode(
-        x=alt.X("Date:T"),
-        y=alt.value(0),
-        color="Platform:N",
-        shape="Platform:N",
-        tooltip=["Date", "Platform"]
-    )
-
-
-    st.altair_chart(social_chart, use_container_width=True)
-
-    
-    combined_chart = alt.layer(social_chart, sales_chart)
-    st.altair_chart(sales_chart, use_container_width=True)
-
-    st.altair_chart(combined_chart, use_container_width=True)
 with tab_sales:
     st.header("Sales Data")
     st.dataframe(sales_df)
@@ -166,8 +218,8 @@ with tab_social:
     st.header("Social Media Data")
     st.dataframe(social_df)
 
-with  tab_email:
-    st.header("Email Markting Data")
+with tab_email:
+    st.header("Email Marketing Data")
 
 st.divider()
 st.button("Run Scraper")
