@@ -4,8 +4,6 @@ from selenium.webdriver.common.by import By
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-
-
 # ---------------- GOOGLE SHEETS SETUP ----------------
 SHEET_NAME = "LinguistPd Buffer Data"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
