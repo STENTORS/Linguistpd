@@ -159,8 +159,8 @@ combined_data = pd.concat([
 ])
 
 # =========== Content ==========
-tab_main, tab_sales, tab_social, tab_email = st.tabs([
-    "📈 Analytics", "Sales Data", "Social Data", "Email Marketing"
+tab_main, tab_sales, tab_social, tab_email, tab_payment_count = st.tabs([
+    "📈 Analytics", "Sales Data", "Social Data", "Email Marketing", "User Offers"
 ])
 
 with tab_main:
@@ -220,6 +220,9 @@ with tab_social:
 
 with tab_email:
     st.header("Email Marketing Data")
+
+with tab_payment_count:
+    st.header("Meow")
 
 st.divider()
 st.button("Run Scraper")

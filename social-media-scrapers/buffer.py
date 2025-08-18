@@ -7,7 +7,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 
 # ---------------- GOOGLE SHEETS SETUP ----------------
-SHEET_NAME = "LinguistPd"
+SHEET_NAME = "LinguistPd Buffer Data"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
