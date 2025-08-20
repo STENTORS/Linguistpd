@@ -88,8 +88,7 @@ for block in elements:
                     label = m.find_element(By.CLASS_NAME, "publish_label_79dYt").text.strip()
                     value = m.find_element(By.CLASS_NAME, "publish_metric_3fmE3").text.strip()
 
-                    if int != type(value):
-                        value = 0
+                    
                     metrics[label] = value
                     
                 except:
@@ -99,6 +98,7 @@ for block in elements:
 
         # Merge Likes/Reactions into one column for sheet
         try:
+            
             likes_reactions = int(metrics.get("Likes")) or int(metrics.get("Reactions"))
         except:
             likes_reactions = 0
@@ -111,10 +111,20 @@ for block in elements:
             comment_val = int(metrics.get("Comments"))
         except:
             comment_val = 0
-        
 
-        social_score = likes_reactions + clicks_eng + comment_val + metrics.get("Impressions") + metrics.get("Shares")
+        try:
+            immpression_val = int(metrics.get("Impressions"))
+        except:
+            immpression_val = 0
 
+        try:
+            share_val = int(metrics.get("Shares"))
+        except:
+            share_val = 0
+       
+
+        social_score = likes_reactions + clicks_eng + comment_val + immpression_val + share_val
+     
         data.append([
             current_date,
             time_text,
