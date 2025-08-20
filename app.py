@@ -18,9 +18,11 @@ social_df = social_conn.read()
 sales_conn = st.connection("sales_gsheets", type=GSheetsConnection)
 sales_df = sales_conn.read()
 
+wp_sales_conn = st.connection("wp_sales_gsheets", type=GSheetsConnection)
+wp_sales_df = wp_sales_conn.read()
+
 # =========== Password Check ==========
 def check_password():
-    """Returns `True` if the user had a correct password."""
     def login_form():
         with st.form("Credentials"):
             st.text_input("Username", key="username")
@@ -214,6 +216,9 @@ with tab_sales:
     st.header("Sales Data")
     st.dataframe(sales_df)
 
+    st.header("WP Sales Data")
+    st.dataframe(wp_sales_df)
+    
 with tab_social:
     st.header("Social Media Data")
     st.dataframe(social_df)
