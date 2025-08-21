@@ -144,7 +144,7 @@ available_years = sorted(
         set(monthly_social["Year"].unique())
     )
 )
-selected_year = st.sidebar.selectbox(
+selected_year = st.selectbox(
     "Select Year", 
     available_years, 
     index=len(available_years)-1
@@ -227,7 +227,7 @@ with tab_email:
     st.header("Email Marketing Data")
 
 with tab_payment_count:
-    st.header("Meow")
+    st.header("Sales per user count")
 
 st.divider()
 st.button("Run Scrapers")#buffer + wp-scraper - so i need to automate authentation

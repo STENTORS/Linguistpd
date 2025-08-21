@@ -16,27 +16,26 @@ sheet = client.open(SHEET_NAME).sheet1
 options = webdriver.FirefoxOptions()
 # options.add_argument("--headless")  
 driver = webdriver.Firefox(options=options)
-driver.get("https://linguistpd.co.uk/wp-admin/edit.php?post_type=paypal_ipn&mode=list")
+driver.get("https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list")
 
 input("Log in to WP, then press Enter here...")
 
 time.sleep(5)
 
-wp_payment_data = [["Transaction ID", "Invoice ID", "Date", "Customer Name", "Amount", "Transaction Type", "Payment Status"]]
+wp_payment_data = [["Order ID", "First Name", "Last Name", "Email", "Total Amount", "Status", "Date", "Order"]]
 
-#table = driver.find_element(By.CLASS_NAME, "wp-list-table")
 table = driver.find_elements(By.CLASS_NAME, "iedit")
 
 for row in table:
-    transation_id = row.find_element(By.CLASS_NAME, "row-title").text.strip()
-    invoice_id = row.find_element(By.CLASS_NAME, "invoice").text.strip()
-    date = row.find_element(By.CLASS_NAME, "payment_date").text.strip()
-    customer_name = row.find_element(By.CLASS_NAME, "first_name").text.strip()
+    order_id = row.find_element(By.CLASS_NAME, "row-title").text.strip()
+    f_name = row.find_element(By.CLASS_NAME, "invoice").text.strip()
+    l_name = row.find_element(By.CLASS_NAME, "payment_date").text.strip()
+    email = row.find_element(By.CLASS_NAME, "first_name").text.strip()
     amount = row.find_element(By.CLASS_NAME, "mc_gross").text.strip()
-    transaction_type = row.find_element(By.CLASS_NAME, "txn_type").text.strip()
-    payment_status = row.find_element(By.CLASS_NAME, "payment_status").text.strip()
+    payment_status = row.find_element(By.CLASS_NAME, "txn_type").text.strip()
+    date = row.find_element(By.CLASS_NAME, "payment_status").text.strip()
 
-    wp_payment_data.append([transation_id, invoice_id, date, customer_name, amount, transaction_type, payment_status])
+    wp_payment_data.append([order_id, f_name, l_name, email, amount, payment_status, date, "N/A"])
 
 driver.quit()
 
