@@ -27,7 +27,7 @@ sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
-options.add_argument("--headless")  
+#options.add_argument("--headless")  
 driver = webdriver.Firefox(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)

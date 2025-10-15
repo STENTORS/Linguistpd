@@ -14,7 +14,7 @@ sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
-# options.add_argument("--headless")  
+options.add_argument("--headless")  
 driver = webdriver.Firefox(options=options)
 driver.get("https://publish.buffer.com/all-channels?tab=sent")
 

@@ -12,14 +12,15 @@ from dateutil import parser
 load_dotenv()
 
 # =========== Sheet Connections ==========
+
 social_conn = st.connection("social_gsheets", type=GSheetsConnection)
 social_df = social_conn.read()
 
 sales_conn = st.connection("sales_gsheets", type=GSheetsConnection)
-sales_df = sales_conn.read()
+sales_df = sales_conn.read(worksheet="Thinkifc orders updated by Zapier")
 
 wp_sales_conn = st.connection("wp_sales_gsheets", type=GSheetsConnection)
-wp_sales_df = wp_sales_conn.read()
+wp_sales_df =wp_sales_conn.read()
 
 # =========== Password Check ==========
 def check_password():
@@ -66,12 +67,23 @@ def parse_social_date(date_str):
     except:
         return None
 
+def clean_wp_date(date_str):
+    try:
+        date = date_str.split()[1]
+        time = date_str.split()[-1]
+        datetime = date + " " + time
+        datetime = pd.to_datetime(datetime)
+        return datetime
+    except:
+        return None
 # =========== Data Processing Functions ==========
 def prepare_sales_data(df):
     """Process sales data and aggregate by month"""
+    df["Date"] = pd.to_datetime(df["Date and Time"], errors="coerce")
     df["Date and Time"] = pd.to_datetime(df["Date and Time"], errors="coerce")
     df["Year"] = df["Date and Time"].dt.year
     df["Month"] = df["Date and Time"].dt.month
+
     
     # Aggregate sales by month
     monthly_sales = df.groupby(["Year", "Month"]).agg({
@@ -86,6 +98,22 @@ def prepare_sales_data(df):
         lambda x: calendar.month_abbr[x]
     )
     return monthly_sales
+
+def prepare_wp_sales_data(df):
+    """Proccess live webinar sales data - get month"""
+    df["cleaned date"] = df["Date"].apply(clean_wp_date)
+    st.write(df["cleaned date"])
+    df["Date"] = df["cleaned date"].dt.date
+    df["Month"] = df["cleaned date"].dt.month
+    df["Year"] = df["cleaned date"].dt.year
+    st.write(df["cleaned date"], df["Date"], df["Month"], df["Year"])
+
+    monthly_wp_sales = df.groupby(["Year", "Month"]).agg({
+        "Amount": "sum"
+    }).reset_index()
+
+    monthly_sales["Date"]
+
 
 def prepare_social_data(df):
     """Process social data and aggregate by month"""
@@ -136,14 +164,16 @@ if not check_password():
 
 # Process data
 monthly_sales = prepare_sales_data(sales_df)
+monthly_wp_sales = prepare_wp_sales_data(wp_sales_df)
 monthly_social = prepare_social_data(social_df)
 
 # Get available years from data
 available_years = sorted(
     set(monthly_sales["Year"].unique()).union(
-        set(monthly_social["Year"].unique())
+        set(monthly_social["Year"].unique()) 
     )
 )
+
 selected_year = st.selectbox(
     "Select Year", 
     available_years, 
@@ -152,11 +182,13 @@ selected_year = st.selectbox(
 
 # Filter data by selected year
 sales_filtered = monthly_sales[monthly_sales["Year"] == selected_year]
+wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
 social_filtered = monthly_social[monthly_social["Year"] == selected_year]
 
 # Combine data for shared x-axis
 combined_data = pd.concat([
     sales_filtered.assign(Type="Sales"),
+    wp_sales_filtered.assign(Type="Live"),
     social_filtered.assign(Type="Social")
 ])
 
@@ -181,6 +213,13 @@ with tab_main:
             y=alt.Y('Amount:Q', title='Sales Amount', scale=alt.Scale(zero=False)),
             tooltip=['Month_Name', 'Year', 'Amount']
         )
+
+        wp_sales_line = base.transform_filter(
+            alt.datum.Type == "Live"
+        ).mark_line(color='green').encode(
+            y=alt.Y('Amount:Q', title='Live Webinars', scale=alt.Scale(zero=False)),
+            tooltip=['Month_Name', 'Year', 'Total Amount']
+        )
         
         # Social scatter
         social_scatter = base.transform_filter(
@@ -191,7 +230,7 @@ with tab_main:
         )
         
         # Combine charts
-        combined_chart = alt.layer(sales_line, social_scatter).resolve_scale(
+        combined_chart = alt.layer(sales_line, wp_sales_line, social_scatter).resolve_scale(
             y='independent'
         ).properties(
             width=800,
