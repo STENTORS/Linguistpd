@@ -97,7 +97,6 @@ def prepare_sales_data(df):
     monthly_sales["Month_Name"] = monthly_sales["Month"].apply(
         lambda x: calendar.month_abbr[x]
     )
-    st.write(monthly_sales)
     return monthly_sales
 
 def prepare_wp_sales_data(df):
@@ -106,7 +105,6 @@ def prepare_wp_sales_data(df):
     df["Date"] = df["cleaned date"].dt.date
     df["Month"] = df["cleaned date"].dt.month
     df["Year"] = df["cleaned date"].dt.year
-    #st.write(df["cleaned date"], df["Date"], df["Month"], df["Year"])
 
     monthly_wp_sales = df.groupby(["Year", "Month"]).agg({
         "Total Amount": "sum"
@@ -119,7 +117,6 @@ def prepare_wp_sales_data(df):
     monthly_wp_sales["Month_Name"] = monthly_wp_sales["Month"].apply(
         lambda x: calendar.month_abbr[x]
     )
-    st.write(monthly_wp_sales)
 
     return monthly_wp_sales
 
@@ -163,7 +160,7 @@ def prepare_social_data(df):
     )
     return monthly_social
 
-# =========== Main Application ==========
+# ====================== Main Application =====================
 st.logo("lpd-logo.png", size="large")
 st.title("Linguistpd Admin Dashboard")
 
@@ -171,15 +168,18 @@ st.title("Linguistpd Admin Dashboard")
 if not check_password():
     st.stop()
 
-# Process data
+# ====================== Line Graph setup =====================
+
+# formating the dfs for the chart
 monthly_sales = prepare_sales_data(sales_df)
 monthly_wp_sales = prepare_wp_sales_data(wp_sales_df)
 monthly_social = prepare_social_data(social_df)
 
-# Get available years from data
+# Get available years from all the dfs
 available_years = sorted(
     set(monthly_sales["Year"].unique()).union(
-        set(monthly_social["Year"].unique()) 
+        set(monthly_social["Year"].unique()),
+        set(monthly_wp_sales["Year"].unique())
     )
 )
 
@@ -191,7 +191,7 @@ selected_year = st.selectbox(
 
 # Filter data by selected year
 sales_filtered = monthly_sales[monthly_sales["Year"] == selected_year]
-#wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
+wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
 social_filtered = monthly_social[monthly_social["Year"] == selected_year]
 
 # Combine data for shared x-axis
@@ -201,7 +201,7 @@ combined_data = pd.concat([
     social_filtered.assign(Type="Social")
 ])
 
-# =========== Content ==========
+# ====================== Content =====================
 tab_main, tab_sales, tab_social, tab_email, tab_payment_count = st.tabs([
     "📈 Analytics", "Sales Data", "Social Data", "Email Marketing", "User Offers"
 ])
@@ -226,7 +226,7 @@ with tab_main:
         wp_sales_line = base.transform_filter(
             alt.datum.Type == "Live"
         ).mark_line(color='green').encode(
-            y=alt.Y('Amount:Q', title='Live Webinars', scale=alt.Scale(zero=False)),
+            y=alt.Y('Total Amount:Q', scale=alt.Scale(zero=False)),
             tooltip=['Month_Name', 'Year', 'Total Amount']
         )
         
@@ -237,10 +237,10 @@ with tab_main:
             y=alt.Y('Total_Score:Q', title='Social Score', scale=alt.Scale(zero=False)),
             tooltip=['Month_Name', 'Year', 'Total_Score']
         )
-        
+
         # Combine charts
         combined_chart = alt.layer(sales_line, wp_sales_line, social_scatter).resolve_scale(
-            y='independent'
+            y='shared'
         ).properties(
             width=800,
             height=400
@@ -251,8 +251,8 @@ with tab_main:
         # Metrics
         col1, col2 = st.columns(2)
         with col1:
-            total_sales = sales_filtered["Amount"].sum()
-            st.metric("Total Sales", f"${total_sales:,.2f}")
+            total_sales = sales_filtered["Amount"].sum() + wp_sales_filtered["Total Amount"].sum()
+            st.metric("Total Sales", f"£{total_sales:,.2f}")
         
         with col2:
             total_social = social_filtered["Total_Score"].sum()
