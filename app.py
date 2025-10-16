@@ -97,22 +97,31 @@ def prepare_sales_data(df):
     monthly_sales["Month_Name"] = monthly_sales["Month"].apply(
         lambda x: calendar.month_abbr[x]
     )
+    st.write(monthly_sales)
     return monthly_sales
 
 def prepare_wp_sales_data(df):
     """Proccess live webinar sales data - get month"""
     df["cleaned date"] = df["Date"].apply(clean_wp_date)
-    st.write(df["cleaned date"])
     df["Date"] = df["cleaned date"].dt.date
     df["Month"] = df["cleaned date"].dt.month
     df["Year"] = df["cleaned date"].dt.year
-    st.write(df["cleaned date"], df["Date"], df["Month"], df["Year"])
+    #st.write(df["cleaned date"], df["Date"], df["Month"], df["Year"])
 
     monthly_wp_sales = df.groupby(["Year", "Month"]).agg({
-        "Amount": "sum"
+        "Total Amount": "sum"
     }).reset_index()
 
-    monthly_sales["Date"]
+    monthly_wp_sales["Date"] = pd.to_datetime(
+        monthly_wp_sales[["Year", "Month"]].assign(DAY=1)
+    )
+
+    monthly_wp_sales["Month_Name"] = monthly_wp_sales["Month"].apply(
+        lambda x: calendar.month_abbr[x]
+    )
+    st.write(monthly_wp_sales)
+
+    return monthly_wp_sales
 
 
 def prepare_social_data(df):
@@ -182,7 +191,7 @@ selected_year = st.selectbox(
 
 # Filter data by selected year
 sales_filtered = monthly_sales[monthly_sales["Year"] == selected_year]
-wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
+#wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
 social_filtered = monthly_social[monthly_social["Year"] == selected_year]
 
 # Combine data for shared x-axis
