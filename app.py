@@ -145,7 +145,6 @@ def prepare_social_data(df):
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     df["Total_Score"] = df[engagement_columns].sum(axis=1)
-    
     # Aggregate by month
     monthly_social = df.groupby(["Year", "Month"]).agg({
         "Total_Score": "sum"
@@ -249,16 +248,22 @@ with tab_main:
         st.altair_chart(combined_chart, use_container_width=True)
         
         # Metrics
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             total_sales = sales_filtered["Amount"].sum() + wp_sales_filtered["Total Amount"].sum()
             st.metric("Total Sales", f"£{total_sales:,.2f}")
         
         with col2:
-            total_social = social_filtered["Total_Score"].sum()
-            st.metric("Total Social Score", f"{total_social:,.0f}")
+            st.metric("Total Live Webinar Sales", f"£{wp_sales_filtered["Total Amount"].sum():,.0f}")
+        with col3:
+            st.metric("Total Pre Recorded Sales", f"£{sales_filtered["Amount"].sum():,.0f}")
+
+        st.divider()
+        st.header("Analytics")
     else:
         st.warning("No data available for the selected year.")
+
+        
 
 with tab_sales:
     st.header("Sales Data")
@@ -276,6 +281,25 @@ with tab_email:
 
 with tab_payment_count:
     st.header("Sales per user count")
+
+    group = sales_df.groupby("Email address")
+    total_amount = group["Amount"].sum().reset_index(name="Amount")
+    purchase_counts = sales_df["Email address"].value_counts().reset_index(name = "Purchase Count")
+    purchase_counts["Amount Spent"] = total_amount["Amount"]
+    purchase_counts.columns = ["Email address", "Purchase Count", "Amount Spent"]
+    
+    wp_group = wp_sales_df.groupby("Email")
+    total_wp_amount = wp_group["Total Amount"].sum().reset_index(name="Total Amount")
+
+    purchase_counts_wp = wp_sales_df["Email"].value_counts().reset_index()
+    purchase_counts_wp["Amount Spent"] = total_wp_amount["Total Amount"]
+    purchase_counts_wp.columns = ["Email", "Purchase Count", "Amount Spent"]
+
+    st.write("Thinkific Sales")
+    st.write(purchase_counts)
+    st.write("Live Webinar Sales")
+    st.write(purchase_counts_wp)
+
 
 st.divider()
 st.button("Run Scrapers")#buffer + wp-scraper - so i need to automate authentation
