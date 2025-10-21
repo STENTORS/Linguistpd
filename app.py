@@ -263,8 +263,6 @@ with tab_main:
     else:
         st.warning("No data available for the selected year.")
 
-        
-
 with tab_sales:
     st.header("Sales Data")
     st.dataframe(sales_df)
@@ -288,18 +286,22 @@ with tab_payment_count:
     purchase_counts["Amount Spent"] = total_amount["Amount"]
     purchase_counts.columns = ["Email address", "Purchase Count", "Amount Spent"]
     
-    wp_group = wp_sales_df.groupby("Email")
+    wp_group = wp_sales_df.groupby("Email address")
     total_wp_amount = wp_group["Total Amount"].sum().reset_index(name="Total Amount")
 
-    purchase_counts_wp = wp_sales_df["Email"].value_counts().reset_index()
+    purchase_counts_wp = wp_sales_df["Email address"].value_counts().reset_index()
     purchase_counts_wp["Amount Spent"] = total_wp_amount["Total Amount"]
-    purchase_counts_wp.columns = ["Email", "Purchase Count", "Amount Spent"]
+    purchase_counts_wp.columns = ["Email address", "Purchase Count", "Amount Spent"]
 
-    st.write("Thinkific Sales")
+    st.subheader("Thinkific Sales")
     st.write(purchase_counts)
-    st.write("Live Webinar Sales")
+    st.subheader("Live Webinar Sales")
     st.write(purchase_counts_wp)
 
+    #combine counts
+    st.subheader("Combined Data")
+    combine_counts = pd.concat([purchase_counts, purchase_counts_wp], ignore_index=True)
+    st.write(combine_counts)
 
 st.divider()
 st.button("Run Scrapers")#buffer + wp-scraper - so i need to automate authentation
