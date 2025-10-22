@@ -1,6 +1,10 @@
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -8,6 +12,15 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 #https://docs.google.com/spreadsheets/d/1bJ9GHCusbuh2eI45kSoExNimAqifIJG8yU8bAz5T7XU/edit?usp=sharing 
 
+# ---------------- SELENIUM SETUP ----------------
+options = webdriver.FirefoxOptions()
+#options.add_argument("--headless")  
+driver = webdriver.Firefox(options=options)
+wait = WebDriverWait(driver, 20)
+actions = ActionChains(driver)
+
 MAIN_URL = "https://webmail.lcn.com/7TkF8tJUBEU7ASSN/?_task=mail&_mbox=INBOX"
 
 #collect the date, author and title for each email by the news letters
+def login_system():
+    driver.get(MAIN_URL)

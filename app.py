@@ -301,6 +301,8 @@ with tab_payment_count:
     #combine counts
     st.subheader("Combined Data")
     combine_counts = pd.concat([purchase_counts, purchase_counts_wp], ignore_index=True)
+    combined_group = combine_counts.groupby("Email address")
+    
     st.write(combine_counts)
 
 st.divider()
