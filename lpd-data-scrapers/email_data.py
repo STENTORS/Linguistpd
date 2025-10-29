@@ -19,8 +19,9 @@ driver = webdriver.Firefox(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
 
-MAIN_URL = "https://webmail.lcn.com/7TkF8tJUBEU7ASSN/?_task=mail&_mbox=INBOX"
+MAIN_URL = "https://mail.google.com/mail/u/5/#inbox"
 
 #collect the date, author and title for each email by the news letters
 def login_system():
     driver.get(MAIN_URL)
+login_system()

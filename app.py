@@ -22,6 +22,9 @@ sales_df = sales_conn.read(worksheet="Thinkifc orders updated by Zapier")
 wp_sales_conn = st.connection("wp_sales_gsheets", type=GSheetsConnection)
 wp_sales_df =wp_sales_conn.read()
 
+email_conn = st.connection("email_gsheets", type=GSheetsConnection)
+email_df = email_conn.read()
+
 # =========== Password Check ==========
 def check_password():
     def login_form():
@@ -31,11 +34,10 @@ def check_password():
             st.form_submit_button("Log in", on_click=password_entered)
 
     def password_entered():
-        if os.environ.get(f"{st.session_state['username'].upper()}_STREAMLIT_PASSWORD") \
-            and hmac.compare_digest(
+        if (st.secrets.login_credentials.admin_user == st.session_state['username'] and hmac.compare_digest(
                 st.session_state["password"],
-                os.environ.get(f"{st.session_state['username'].upper()}_STREAMLIT_PASSWORD")
-            ):
+                st.secrets.login_credentials.admin_pass
+            )):
             st.session_state["password_correct"] = True
             del st.session_state["password"]
             del st.session_state["username"]
@@ -276,6 +278,7 @@ with tab_social:
 
 with tab_email:
     st.header("Email Marketing Data")
+    st.dataframe(email_df)
 
 with tab_payment_count:
     st.header("Sales per user count")
@@ -302,7 +305,13 @@ with tab_payment_count:
     st.subheader("Combined Data")
     combine_counts = pd.concat([purchase_counts, purchase_counts_wp], ignore_index=True)
     combined_group = combine_counts.groupby("Email address")
+    total_group = combined_group["Purchase Count"].sum().reset_index(name = "Purchase Count")
+    total_group_amount = combined_group["Amount Spent"].sum().reset_index(name = "Amount Spent")
+    combine_counts["Purchase Count"] = total_group["Purchase Count"]
+    combine_counts["Amount Spent"] = total_group_amount["Amount Spent"]
+
     
+
     st.write(combine_counts)
 
 st.divider()
