@@ -166,8 +166,8 @@ st.logo("lpd-logo.png", size="large")
 st.title("Linguistpd Admin Dashboard")
 
 # Login system
-if not check_password():
-    st.stop()
+#    if not check_password():
+#        st.stop()
 
 # ====================== Line Graph setup =====================
 
@@ -204,7 +204,7 @@ combined_data = pd.concat([
 
 # ====================== Content =====================
 tab_main, tab_sales, tab_social, tab_email, tab_payment_count = st.tabs([
-    "📈 Analytics", "Sales Data", "Social Data", "Email Marketing", "User Offers"
+    "📈 Analytics", "Sales Data", "Social Data", "Email Marketing", "Sales by User"
 ])
 
 with tab_main:
@@ -281,7 +281,7 @@ with tab_email:
     st.dataframe(email_df)
 
 with tab_payment_count:
-    st.header("Sales per user count")
+    st.header("Sales by User")
 
     group = sales_df.groupby("Email address")
     total_amount = group["Amount"].sum().reset_index(name="Amount")
