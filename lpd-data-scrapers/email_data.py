@@ -19,14 +19,14 @@ PASSWD = os.getenv('PASSWD')
 # ---------------- GOOGLE SHEETS SETUP ----------------
 def setup_google_sheets():
     """Initialize Google Sheets connection"""
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", 
-                "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(
-            "path/to/your/credentials.json", scope)
-        client = gspread.authorize(creds)
-        sheet = client.open("Email Headers").sheet1
-        return sheet
+    try:  
+      SHEET_NAME = "Email LPD data"
+      SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+      creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
+      client = gspread.authorize(creds)
+      sheet = client.open(SHEET_NAME).sheet1
+      return sheet
     except Exception as e:
         print(f"Google Sheets setup failed: {e}")
         return None
@@ -81,6 +81,17 @@ def extract_email_headers():
         print("Extracting email headers...")
         
         # Wait for emails to load
+        wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "tr.message"))
+        )
+
+        search = wait.until(
+            EC.element_to_be_clickable((By.ID, "quicksearchbox"))
+        )
+        search.clear()
+        search.send_keys("linguist")
+        search.send_keys(Keys.ENTER)
+
         wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "tr.message"))
         )
@@ -157,8 +168,7 @@ def main():
     """Main execution function"""
     try:
         # Initialize Google Sheets (uncomment when ready)
-        # sheet = setup_google_sheets()
-        sheet = None
+        sheet = setup_google_sheets()
         
         # Login to email
         login_system()
