@@ -372,13 +372,7 @@ def analyze_best_posting_times(social_df, sales_df, wp_sales_df):
     except:
         recommendations.append("🔗 Correlation analysis unavailable")
     
-    # Peak performance recommendations
-    recommendations.extend([
-        "🕒 **Recommended posting times**:",
-        "   • **Tuesday-Thursday**: 9 AM - 12 PM (highest professional engagement)",
-        "   • **Lunch hours**: 12 PM - 2 PM (mobile device usage peaks)",
-        "   • **Evening slots**: 7 PM - 9 PM (leisure browsing time)"
-    ])
+
     
     return recommendations
 
@@ -483,6 +477,290 @@ tab_main, tab_sales, tab_social, tab_email, tab_payment_count = st.tabs([
     "📈 Analytics", "Sales Data", "Social Data", "Email Marketing", "Sales by User"
 ])
 
+
+# =========== Enhanced Social Media Scoring ==========
+def calculate_social_scores(df):
+    """Calculate weighted scores for social media posts based on platform performance"""
+    if df.empty:
+        return pd.DataFrame()
+    
+    df_clean = df.copy()
+    
+    # Platform-specific weights based on typical engagement patterns
+    platform_weights = {
+        'facebook': {'impressions': 0.3, 'comments': 0.4, 'likes': 0.3},
+        'twitter': {'impressions': 0.4, 'comments': 0.3, 'likes': 0.3},
+        'linkedin': {'impressions': 0.5, 'comments': 0.4, 'likes': 0.1},
+        'instagram': {'impressions': 0.3, 'comments': 0.4, 'likes': 0.3}
+    }
+    
+    # Clean engagement data
+    engagement_columns = ["Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Eng. Rate"]
+    
+    for col in engagement_columns:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].astype(str)
+            df_clean[col] = df_clean[col].apply(
+                lambda x: 0 if "no data available" in x.lower() or x.lower() == "nan" or x == "" else x
+            )
+            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
+    
+    # Ensure Platform column exists and clean it
+    if 'Platform' not in df_clean.columns:
+        df_clean['Platform'] = 'unknown'
+    else:
+        df_clean['Platform'] = df_clean['Platform'].fillna('unknown').str.lower()
+    
+    # Calculate platform-specific scores
+    df_clean['Platform_Score'] = 0
+    
+    for platform, weights in platform_weights.items():
+        platform_mask = df_clean['Platform'].str.lower() == platform
+        if platform_mask.any():
+            score = 0
+            for metric, weight in weights.items():
+                if metric == 'likes' and 'Likes/Reactions' in df_clean.columns:
+                    score += df_clean.loc[platform_mask, 'Likes/Reactions'] * weight
+                elif metric == 'comments' and 'Comments' in df_clean.columns:
+                    score += df_clean.loc[platform_mask, 'Comments'] * weight
+                elif metric == 'impressions' and 'Impressions' in df_clean.columns:
+                    score += df_clean.loc[platform_mask, 'Impressions'] * weight / 1000  # Normalize impressions
+            df_clean.loc[platform_mask, 'Platform_Score'] = score
+    
+    # Add bonus for multiple engagement types
+    engagement_cols = [col for col in ['Likes/Reactions', 'Comments', 'Impressions'] if col in df_clean.columns]
+    if engagement_cols:
+        engagement_count = (df_clean[engagement_cols] > 0).sum(axis=1)
+        df_clean['Engagement_Bonus'] = engagement_count * 0.5
+    else:
+        df_clean['Engagement_Bonus'] = 0
+    
+    # Final total score
+    df_clean['Total_Score'] = df_clean['Platform_Score'] + df_clean['Engagement_Bonus']
+    
+    return df_clean
+
+def analyze_cross_platform_performance(social_df):
+    """Analyze which platforms perform best and when"""
+    if social_df.empty:
+        return pd.DataFrame()
+    
+    df_clean = calculate_social_scores(social_df)
+    
+    if df_clean.empty:
+        return pd.DataFrame()
+    
+    # Platform performance analysis
+    platform_performance = df_clean.groupby('Platform').agg({
+        'Total_Score': ['mean', 'max', 'count'],
+        'Likes/Reactions': 'mean',
+        'Comments': 'mean',
+        'Impressions': 'mean'
+    }).round(2)
+    
+    # Flatten column names
+    platform_performance.columns = ['_'.join(col).strip() for col in platform_performance.columns.values]
+    platform_performance = platform_performance.reset_index()
+    
+    # Rename columns for clarity
+    platform_performance.columns = ['Platform', 'Avg_Score', 'Max_Score', 'Post_Count', 'Avg_Likes', 'Avg_Comments', 'Avg_Impressions']
+    
+    return platform_performance
+
+def analyze_temporal_patterns(social_df, sales_df, wp_sales_df):
+    """Analyze time-based patterns for recommendations"""
+    recommendations = []
+    
+    try:
+        # Prepare daily data for correlation analysis
+        daily_social = prepare_daily_social_data(social_df)
+        daily_sales = prepare_daily_sales_data(sales_df)
+        daily_wp_sales = prepare_daily_wp_sales_data(wp_sales_df)
+        
+        if daily_social.empty or (daily_sales.empty and daily_wp_sales.empty):
+            recommendations.append("📊 Need more data for temporal pattern analysis")
+            return recommendations
+        
+        # Merge data for lag analysis
+        merged_data = daily_social.merge(
+            daily_sales[['Date', 'Amount']], 
+            on='Date', 
+            how='left', 
+            suffixes=('_social', '_sales')
+        ).merge(
+            daily_wp_sales[['Date', 'Total Amount']], 
+            on='Date', 
+            how='left'
+        )
+        
+        merged_data['Total_Sales'] = merged_data['Amount'].fillna(0) + merged_data['Total Amount'].fillna(0)
+        
+        # Calculate correlations with different lags
+        max_lag = 7  # Look up to 7 days ahead
+        best_lag = 0
+        best_correlation = 0
+        
+        for lag in range(max_lag + 1):
+            if len(merged_data) > lag + 1:
+                # Shift social data forward to see effect on future sales
+                social_shifted = merged_data['Total_Score'].iloc[:-lag] if lag > 0 else merged_data['Total_Score']
+                sales_future = merged_data['Total_Sales'].iloc[lag:] if lag > 0 else merged_data['Total_Sales']
+                
+                if len(social_shifted) == len(sales_future) and len(social_shifted) > 1:
+                    correlation = social_shifted.corr(sales_future)
+                    if not pd.isna(correlation) and abs(correlation) > abs(best_correlation):
+                        best_correlation = correlation
+                        best_lag = lag
+        
+        if abs(best_correlation) > 0.3:
+            if best_lag == 0:
+                recommendations.append(f"🎯 **Immediate Impact**: Social media shows immediate correlation with sales (r={best_correlation:.2f})")
+            else:
+                recommendations.append(f"🎯 **Delayed Impact**: Social media today correlates with sales {best_lag} day(s) later (r={best_correlation:.2f})")
+        else:
+            recommendations.append("📊 **Weak Correlation**: No strong immediate correlation found between social posts and sales")
+        
+        # Best performing days of week
+        df_clean = calculate_social_scores(social_df)
+        df_clean["Parsed_Date"] = df_clean["Date"].apply(parse_social_date)
+        df_clean = df_clean.dropna(subset=["Parsed_Date"])
+        df_clean["Parsed_Date"] = pd.to_datetime(df_clean["Parsed_Date"])
+        df_clean["DayOfWeek"] = df_clean["Parsed_Date"].dt.day_name()
+        
+        weekday_performance = df_clean.groupby("DayOfWeek")["Total_Score"].mean().sort_values(ascending=False)
+        if not weekday_performance.empty:
+            best_day = weekday_performance.index[0]
+            recommendations.append(f"📅 **Best Posting Day**: {best_day} has highest average engagement")
+        
+        # Platform-specific recommendations
+        platform_perf = analyze_cross_platform_performance(social_df)
+        if not platform_perf.empty:
+            best_platform = platform_perf.loc[platform_perf['Avg_Score'].idxmax(), 'Platform']
+            recommendations.append(f"📱 **Top Platform**: {best_platform.capitalize()} delivers highest average engagement")
+            
+            # Check if any platform is underutilized but effective
+            efficient_platforms = platform_perf[platform_perf['Post_Count'] < platform_perf['Post_Count'].median()]
+            if not efficient_platforms.empty:
+                efficient_platform = efficient_platforms.loc[efficient_platforms['Avg_Score'].idxmax(), 'Platform']
+                recommendations.append(f"💡 **Opportunity**: Consider posting more on {efficient_platform.capitalize()} - it shows good engagement with fewer posts")
+        
+        # Content gap analysis (based on your sample data)
+        corporate_posts = social_df[social_df['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
+        if len(corporate_posts) > 0:
+            avg_corporate_score = calculate_social_scores(corporate_posts)['Total_Score'].mean()
+            other_posts = social_df[~social_df['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
+            if len(other_posts) > 0:
+                avg_other_score = calculate_social_scores(other_posts)['Total_Score'].mean()
+                if avg_corporate_score > avg_other_score * 1.2:
+                    recommendations.append("🌟 **Content Strength**: Corporate training posts perform 20%+ better than average - consider expanding this content")
+        
+    except Exception as e:
+        recommendations.append(f"📊 Pattern analysis limited: {str(e)}")
+    
+    return recommendations
+
+def analyze_seasonal_trends(monthly_social, monthly_sales, monthly_wp_sales):
+    """Analyze seasonal patterns across all data"""
+    recommendations = []
+    
+    try:
+        # Combine all monthly data
+        merged_monthly = monthly_social.merge(
+            monthly_sales[['Year', 'Month', 'Amount']], 
+            on=['Year', 'Month'], 
+            how='outer', 
+            suffixes=('_social', '_sales')
+        ).merge(
+            monthly_wp_sales[['Year', 'Month', 'Total Amount']], 
+            on=['Year', 'Month'], 
+            how='outer'
+        )
+        
+        merged_monthly['Total_Sales'] = merged_monthly['Amount'].fillna(0) + merged_monthly['Total Amount'].fillna(0)
+        merged_monthly['Total_Score'] = merged_monthly['Total_Score'].fillna(0)
+        
+        # Analyze by month (across all years)
+        monthly_patterns = merged_monthly.groupby('Month').agg({
+            'Total_Sales': 'mean',
+            'Total_Score': 'mean'
+        }).reset_index()
+        
+        if not monthly_patterns.empty:
+            best_sales_month = monthly_patterns.loc[monthly_patterns['Total_Sales'].idxmax(), 'Month']
+            best_social_month = monthly_patterns.loc[monthly_patterns['Total_Score'].idxmax(), 'Month']
+            best_sales_month_name = calendar.month_name[best_sales_month]
+            best_social_month_name = calendar.month_name[best_social_month]
+            
+            recommendations.append(f"📈 **Seasonal Peak Sales**: {best_sales_month_name} historically strongest for revenue")
+            recommendations.append(f"👥 **Seasonal Peak Engagement**: {best_social_month_name} historically best for social engagement")
+            
+            # Check alignment
+            if best_sales_month == best_social_month:
+                recommendations.append(f"🎯 **Perfect Alignment**: {best_sales_month_name} is peak for both sales AND engagement - maximize efforts this month!")
+            else:
+                recommendations.append(f"🔄 **Strategic Planning**: Consider increasing social activity in {best_social_month_name} to build momentum for {best_sales_month_name} sales peak")
+        
+    except Exception as e:
+        recommendations.append("📅 Seasonal analysis limited by available data")
+    
+    return recommendations
+
+def create_performance_metrics(sales_df, wp_sales_df, social_df):
+    """Create key performance metrics with proper error handling"""
+    metrics = {}
+    
+    try:
+        # Total revenue - ensure numeric values
+        if "Amount" in sales_df.columns:
+            sales_df["Amount"] = pd.to_numeric(sales_df["Amount"], errors='coerce').fillna(0)
+            thinkific_sales = sales_df["Amount"].sum()
+        else:
+            thinkific_sales = 0
+            
+        if "Total Amount" in wp_sales_df.columns:
+            wp_sales_df["Total Amount"] = pd.to_numeric(wp_sales_df["Total Amount"], errors='coerce').fillna(0)
+            webinar_sales = wp_sales_df["Total Amount"].sum()
+        else:
+            webinar_sales = 0
+            
+        metrics["total_revenue"] = thinkific_sales + webinar_sales
+        metrics["thinkific_revenue"] = thinkific_sales
+        metrics["webinar_revenue"] = webinar_sales
+        
+        # Social engagement with enhanced scoring
+        social_scored = calculate_social_scores(social_df)
+        if not social_scored.empty and "Total_Score" in social_scored.columns:
+            metrics["avg_engagement"] = social_scored["Total_Score"].mean()
+            metrics["max_engagement"] = social_scored["Total_Score"].max()
+            metrics["total_posts"] = len(social_scored)
+            
+            # Platform diversity
+            if 'Platform' in social_scored.columns:
+                platforms = social_scored['Platform'].nunique()
+                metrics["platform_diversity"] = platforms
+        
+        # Growth metrics - ensure we're counting valid rows
+        valid_sales = len(sales_df[sales_df["Amount"].notna()]) if "Amount" in sales_df.columns else 0
+        valid_wp_sales = len(wp_sales_df[wp_sales_df["Total Amount"].notna()]) if "Total Amount" in wp_sales_df.columns else 0
+        metrics["total_customers"] = valid_sales + valid_wp_sales
+        
+    except Exception as e:
+        st.error(f"Error calculating metrics: {e}")
+        # Set default values
+        metrics = {
+            "total_revenue": 0,
+            "thinkific_revenue": 0,
+            "webinar_revenue": 0,
+            "total_customers": 0,
+            "avg_engagement": 0,
+            "max_engagement": 0,
+            "total_posts": 0,
+            "platform_diversity": 0
+        }
+    
+    return metrics
+
+# =========== Enhanced Analytics Tab Section ==========
 with tab_main:
     st.header(f"Daily Sales vs Social Performance ({selected_year})")
     
@@ -550,7 +828,7 @@ with tab_main:
             st.metric("Total Thinkific Sales", f"£{total_sales:,.0f}")
 
         st.divider()
-        st.header("Analytics")
+        st.header("Enhanced Analytics")
         
         # Performance Metrics
         st.subheader("Key Performance Indicators")
@@ -566,65 +844,113 @@ with tab_main:
         with col4:
             st.metric("Total Customers", f"{metrics.get('total_customers', 0)}")
 
-        # Best Posting Time Recommendations
-        st.subheader("🎯 Best Posting Times & Strategy Recommendations")
-        recommendations = analyze_best_posting_times(social_df, sales_df, wp_sales_df)
+        # Enhanced Analytics Section
+        st.subheader("🎯 Data-Driven Recommendations")
         
-        for recommendation in recommendations:
+        # Cross-platform analysis
+        platform_perf = analyze_cross_platform_performance(social_df)
+        if not platform_perf.empty:
+            st.write("**Platform Performance Analysis:**")
+            
+            # Create metrics for top platforms
+            top_platform = platform_perf.loc[platform_perf['Avg_Score'].idxmax()]
+            most_active_platform = platform_perf.loc[platform_perf['Post_Count'].idxmax()]
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Highest Performing Platform", 
+                         f"{top_platform['Platform'].capitalize()}",
+                         f"Score: {top_platform['Avg_Score']:.1f}")
+            with col2:
+                st.metric("Most Active Platform",
+                         f"{most_active_platform['Platform'].capitalize()}",
+                         f"{most_active_platform['Post_Count']} posts")
+            with col3:
+                underutilized = platform_perf[platform_perf['Post_Count'] < platform_perf['Post_Count'].median()]
+                if not underutilized.empty:
+                    opportunity_platform = underutilized.loc[underutilized['Avg_Score'].idxmax()]
+                    st.metric("Opportunity Platform",
+                             f"{opportunity_platform['Platform'].capitalize()}",
+                             f"{opportunity_platform['Post_Count']} posts")
+            
+            st.dataframe(platform_perf, use_container_width=True)
+        else:
+            st.info("No platform performance data available")
+        
+        # Temporal patterns
+        st.subheader("📊 Engagement & Sales Patterns")
+        temporal_recommendations = analyze_temporal_patterns(social_df, sales_df, wp_sales_df)
+        for recommendation in temporal_recommendations:
             st.write(recommendation)
         
-        # Monthly Performance Analysis
-        st.subheader("📅 Monthly Performance Insights")
+        # Seasonal trends
+        st.subheader("📅 Seasonal Trends")
+        seasonal_recommendations = analyze_seasonal_trends(monthly_social, monthly_sales, monthly_wp_sales)
+        for recommendation in seasonal_recommendations:
+            st.write(recommendation)
+
+        # Content Performance Analysis
+        st.subheader("📝 Content Performance")
+        try:
+            social_scored = calculate_social_scores(social_df)
+            
+            if not social_scored.empty:
+                # Analyze content themes from your sample data
+                content_analysis = []
                 
-        if not monthly_sales.empty and not monthly_social.empty:
-            # Find peak months for current year
-            current_year_sales = monthly_sales[monthly_sales["Year"] == selected_year]
-            current_year_social = monthly_social[monthly_social["Year"] == selected_year]
-            
-            if not current_year_sales.empty and not current_year_social.empty:
-                current_peak_sales = current_year_sales.loc[current_year_sales["Amount"].idxmax()]
-                current_peak_social = current_year_social.loc[current_year_social["Total_Score"].idxmax()]
-            
-            # Find peak months overall (all years)
-            overall_peak_sales = monthly_sales.loc[monthly_sales["Amount"].idxmax()]
-            overall_peak_social = monthly_social.loc[monthly_social["Total_Score"].idxmax()]
-            
-            # Current Year Peaks
-            st.markdown("**Current Year Peaks**")
-            col1, col2 = st.columns(2)
-            with col1:
-                if not current_year_sales.empty:
-                    st.info(f"**Peak Sales Month ({selected_year})**: {current_peak_sales['Month_Name']} - £{current_peak_sales['Amount']:,.0f}")
+                # Corporate training posts (from your sample)
+                corporate_posts = social_scored[social_scored['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
+                if len(corporate_posts) > 0:
+                    corp_avg_score = corporate_posts['Total_Score'].mean()
+                    content_analysis.append({
+                        'Content Type': 'Corporate Training',
+                        'Posts': len(corporate_posts),
+                        'Avg Score': corp_avg_score,
+                        'Performance': 'High' if corp_avg_score > social_scored['Total_Score'].mean() * 1.2 else 'Average'
+                    })
+                
+                # Other content analysis can be added based on your actual post content
+                other_posts = social_scored[~social_scored['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
+                if len(other_posts) > 0:
+                    other_avg_score = other_posts['Total_Score'].mean()
+                    content_analysis.append({
+                        'Content Type': 'Other Content',
+                        'Posts': len(other_posts),
+                        'Avg Score': other_avg_score,
+                        'Performance': 'High' if other_avg_score > social_scored['Total_Score'].mean() * 1.2 else 'Average'
+                    })
+                
+                if content_analysis:
+                    content_df = pd.DataFrame(content_analysis)
+                    st.dataframe(content_df, use_container_width=True)
+                    
+                    # Content recommendations
+                    best_content = content_df.loc[content_df['Avg Score'].idxmax()]
+                    if best_content['Performance'] == 'High':
+                        st.success(f"🌟 **Content Insight**: {best_content['Content Type']} posts perform best with average score of {best_content['Avg Score']:.1f}")
                 else:
-                    st.info(f"**Peak Sales Month ({selected_year})**: No data")
-            with col2:
-                if not current_year_social.empty:
-                    st.info(f"**Peak Social Month ({selected_year})**: {current_peak_social['Month_Name']} - Score: {current_peak_social['Total_Score']:,.0f}")
-                else:
-                    st.info(f"**Peak Social Month ({selected_year})**: No data")
-            
-            # Overall Peaks (All Time)
-            st.markdown("**All-Time Peaks**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success(f"**All-Time Peak Sales**: {overall_peak_sales['Month_Name']} {int(overall_peak_sales['Year'])} - £{overall_peak_sales['Amount']:,.0f}")
-            with col2:
-                st.success(f"**All-Time Peak Social**: {overall_peak_social['Month_Name']} {int(overall_peak_social['Year'])} - Score: {overall_peak_social['Total_Score']:,.0f}")
-    
-        # Data Quality Check
-        st.subheader("Numbers")
+                    st.info("Add more post content to enable content performance analysis")
+                
+        except Exception as e:
+            st.info("Content analysis requires more post data for deeper insights")
+
+        # Data Summary
+        st.subheader("📊 Data Summary")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Social Posts", len(social_df), delta=None)
+            st.metric("Social Posts", len(social_df))
         with col2:
-            st.metric("Thinkific Sales", len(sales_df), delta=None)
+            st.metric("Thinkific Sales", len(sales_df))
         with col3:
-            st.metric("Webinar Sales", len(wp_sales_df), delta=None)
-        
+            st.metric("Webinar Sales", len(wp_sales_df))
+        with col4:
+            total_engagement = social_scored['Total_Score'].sum() if not social_scored.empty and 'Total_Score' in social_scored.columns else 0
+            st.metric("Total Engagement Score", f"{total_engagement:.0f}")
 
     else:
         st.warning("No data available for the selected year.")
+
 
 with tab_sales:
     st.header("Sales Data")
