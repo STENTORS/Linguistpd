@@ -32,7 +32,8 @@ driver = webdriver.Firefox(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
 
-# Store the specific page URL for latest orders
+# Store the specific page URLs as instructed
+PAGE_2_URL = "https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list&paged=2"
 PAGE_1_URL = "https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list&paged=1"
 
 # ---------------- AUTOMATIC WORDPRESS LOGIN ----------------
@@ -40,8 +41,8 @@ def login_to_wordpress():
     """Automatically log in to WordPress"""
     print("Logging in to WordPress...")
     
-    # Go to login page using page 1 URL
-    driver.get(PAGE_1_URL)
+    # Go to login page using page 2 URL
+    driver.get(PAGE_2_URL)
     
     # Wait for login form to load
     wait.until(EC.presence_of_element_located((By.ID, "user_login")))
@@ -65,39 +66,19 @@ def login_to_wordpress():
         time.sleep(2)
         driver.find_element(By.ID, "wp-submit").click()
 
-def get_last_order_id_from_sheet():
-    """Get the last order ID from the Google Sheet to know where to start"""
-    try:
-        # Get all records from the sheet
-        all_records = sheet.get_all_records()
-        
-        if not all_records:
-            print("No existing records found in sheet. Starting fresh.")
-            return None
-        
-        # The last record is the most recent one
-        last_record = all_records[-1]
-        last_order_id = last_record['Order ID']
-        print(f"Last order ID in sheet: {last_order_id}")
-        return last_order_id
-        
-    except Exception as e:
-        print(f"Error reading from Google Sheet: {e}")
-        return None
-
-def scrape_new_orders_from_page(last_known_order_id):
-    """Scrape only new orders from the current page (top to bottom) until we hit last_known_order_id"""
-    new_orders_data = []
+def scrape_page_data_bottom_to_top():
+    """Scrape all orders from the current page from bottom to top"""
+    page_data = []
     
     try:
         table = driver.find_elements(By.CLASS_NAME, "iedit")
-        print(f"Found {len(table)} orders on page 1")
+        print(f"Found {len(table)} orders on this page")
         
         # Store main window handle
-        main_window = driver.current_window_handles[0]
+        main_window = driver.current_window_handle
 
-        # Scrape from top to bottom (newest first) until we find the last known order
-        for index in range(len(table)):
+        # Scrape from bottom to top (reverse order)
+        for index in range(len(table)-1, -1, -1):
             try:
                 # Re-find the row in case the table gets stale
                 current_table = driver.find_elements(By.CLASS_NAME, "iedit")
@@ -105,19 +86,14 @@ def scrape_new_orders_from_page(last_known_order_id):
                 
                 # Extract basic info from the main page first
                 order_id = row.find_element(By.CLASS_NAME, "title").text.strip()
-                
-                # Check if we've reached an order that's already in our sheet
-                if last_known_order_id and order_id == last_known_order_id:
-                    print(f"Reached last known order ID: {order_id}. Stopping scrape.")
-                    break
-                
                 f_name = row.find_element(By.CLASS_NAME, "wpsc_first_name").text.strip()
                 l_name = row.find_element(By.CLASS_NAME, "wpsc_last_name").text.strip()
                 email = row.find_element(By.CLASS_NAME, "wpsc_email_address").text.strip()
+                amount = row.find_element(By.CLASS_NAME, "wpsc_total_amount").text.strip()
                 payment_status = row.find_element(By.CLASS_NAME, "wpsc_order_status").text.strip()
                 date = row.find_element(By.CLASS_NAME, "date").text.strip()
                 
-                print(f"Processing new order {index + 1}: {order_id}")
+                print(f"Processing order {len(table)-index} of {len(table)}: {order_id}")
                 
                 # Open order details in new tab
                 order_detail_url = f"https://linguistpd.co.uk/wp-admin/post.php?post={order_id}&action=edit"
@@ -135,9 +111,10 @@ def scrape_new_orders_from_page(last_known_order_id):
                     total_element = wait.until(
                         EC.presence_of_element_located((By.NAME, "wpsc_total_amount"))
                     )
+                    print(total_element)
                     order = order_element.text.strip()
-                    amount = total_element.text.strip()
-                    print(f"  Order details found: {len(order)} characters \nTotal cost: {amount}")
+                    amount = total_element.get_attribute("value")
+                    print(f"  Order details found: {len(order)} characters \n\n amount: {amount}")
                 except Exception as detail_error:
                     print(f"  Could not find order details: {detail_error}")
                     order = "N/A"
@@ -146,10 +123,10 @@ def scrape_new_orders_from_page(last_known_order_id):
                 driver.close()
                 driver.switch_to.window(main_window)
                 
-                # Add data to our list (new orders will be appended in chronological order)
-                new_orders_data.append([order_id, f_name, l_name, email, amount, payment_status, date, order])
+                # Add data to our list
+                page_data.append([order_id, f_name, l_name, email, amount, payment_status, date, order])
                 
-                print(f"Completed new order {index + 1}")
+                print(f"Completed order {len(table)-index} of {len(table)}")
                 
             except Exception as e:
                 print(f"Error processing row {index}: {e}")
@@ -165,30 +142,10 @@ def scrape_new_orders_from_page(last_known_order_id):
         print("Please check if you're logged in and on the correct page.")
         print(f"Current URL: {driver.current_url}")
     
-    return new_orders_data
-
-def append_to_sheet(new_orders_data):
-    """Append new orders to the Google Sheet"""
-    if not new_orders_data:
-        print("No new orders to append.")
-        return
-    
-    try:
-        # Get the next available row
-        all_values = sheet.get_all_values()
-        next_row = len(all_values) + 1
-        
-        # Append new data
-        sheet.append_rows(new_orders_data)
-        print(f"Successfully appended {len(new_orders_data)} new orders to the sheet.")
-        
-    except Exception as e:
-        print(f"Error appending to Google Sheet: {e}")
+    return page_data
 
 # ---------------- MAIN EXECUTION ----------------
-
-# First, check the last order ID in the existing sheet
-last_known_order_id = get_last_order_id_from_sheet()
+wp_payment_data = [["Order ID", "First Name", "Last Name", "Email", "Total Amount", "Status", "Date", "Order"]]
 
 # Attempt automatic login
 login_to_wordpress()
@@ -200,21 +157,27 @@ while not loggedin:
     except:
         time.sleep(5)
 
-new_orders_data = []
-
 try:
-    # Only scrape Page 1 for new orders
-    print("=== CHECKING FOR NEW ORDERS ON PAGE 1 ===")
+    # FIRST: Scrape Page 2 from bottom to top
+    print("=== SCRAPING PAGE 2 (from bottom to top) ===")
+    driver.get(PAGE_2_URL)
+    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "iedit")))
+    
+    page_2_data = scrape_page_data_bottom_to_top()
+    wp_payment_data.extend(page_2_data)
+    print(f"Completed Page 2. Total orders collected: {len(wp_payment_data)-1}")
+    
+    # Small delay between pages
+    time.sleep(3)
+    
+    # SECOND: Scrape Page 1 from bottom to top
+    print("\n=== SCRAPING PAGE 1 (from bottom to top) ===")
     driver.get(PAGE_1_URL)
     wait.until(EC.presence_of_element_located((By.CLASS_NAME, "iedit")))
     
-    # Scrape only new orders (from top to bottom until we hit last known order)
-    new_orders_data = scrape_new_orders_from_page(last_known_order_id)
-    
-    if new_orders_data:
-        print(f"Found {len(new_orders_data)} new orders to append.")
-    else:
-        print("No new orders found since last scrape.")
+    page_1_data = scrape_page_data_bottom_to_top()
+    wp_payment_data.extend(page_1_data)
+    print(f"Completed Page 1. Total orders collected: {len(wp_payment_data)-1}")
 
 except Exception as e:
     print(f"Error during scraping process: {e}")
@@ -222,14 +185,15 @@ except Exception as e:
 finally:
     driver.quit()
 
-# --- Append new orders to Google Sheets ---
-if new_orders_data:
+# --- Upload to Google Sheets ---
+if len(wp_payment_data) > 1:  # Check if we have data beyond headers
     try:
-        append_to_sheet(new_orders_data)
-        print(f"\n=== UPDATE COMPLETE ===")
-        print(f"Successfully added {len(new_orders_data)} new orders to the spreadsheet!")
+        sheet.clear()
+        sheet.update("A1", wp_payment_data)
+        print(f"\n=== SCRAPING COMPLETE ===")
+        print(f"Successfully processed {len(wp_payment_data)-1} orders and uploaded to Google Sheets!")
+        print(f"Data scraped in order: Page 2 (bottom to top) → Page 1 (bottom to top)")
     except Exception as e:
-        print(f"Error updating Google Sheets: {e}")
+        print(f"Error uploading to Google Sheets: {e}")
 else:
-    print("\n=== NO UPDATES NEEDED ===")
-    print("No new orders found since last scrape.")
+    print("No orders were processed.")

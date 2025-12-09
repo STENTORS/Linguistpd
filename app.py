@@ -100,6 +100,41 @@ def clean_wp_date(date_str):
     except:
         return None
 
+def parse_email_date(date_str):
+    """Parse email date strings with various formats"""
+    try:
+        if pd.isna(date_str) or date_str == "":
+            return None
+        
+        # Handle formats like "Tue 07:46" by adding current year and month
+        if isinstance(date_str, str) and len(date_str.split()) == 2 and ':' in date_str:
+            # Format like "Tue 07:46" - add current date context
+            day_abbr, time = date_str.split()
+            today = datetime.now()
+            
+            # Map day abbreviation to actual date (find most recent occurrence)
+            days_map = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
+            if day_abbr in days_map:
+                current_day = today.weekday()
+                target_day = days_map[day_abbr]
+                
+                # Calculate days difference
+                days_diff = (current_day - target_day) % 7
+                if days_diff == 0:  # Same day
+                    email_date = today
+                else:
+                    email_date = today - timedelta(days=days_diff)
+                
+                # Add time
+                hour, minute = map(int, time.split(':'))
+                email_date = email_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                return email_date
+        
+        # Handle standard date formats like "22/10/2025 13:50"
+        return pd.to_datetime(date_str, dayfirst=True, errors='coerce')
+    except:
+        return None
+
 # =========== Data Processing Functions ==========
 def prepare_daily_sales_data(df):
     """Process sales data and aggregate by day"""
@@ -190,6 +225,35 @@ def prepare_daily_social_data(df):
         daily_social[["Year", "Month", "Day"]]
     )
     return daily_social
+
+def prepare_daily_email_data(df):
+    """Process email data and aggregate by day"""
+    # Create a copy to avoid modifying original
+    df_clean = df.copy()
+    
+    # Parse dates
+    df_clean["Parsed_Date"] = df_clean["Date"].apply(parse_email_date)
+    df_clean = df_clean.dropna(subset=["Parsed_Date"])
+    df_clean["Parsed_Date"] = pd.to_datetime(df_clean["Parsed_Date"])
+    
+    # Extract year, month, day
+    df_clean["Year"] = df_clean["Parsed_Date"].dt.year
+    df_clean["Month"] = df_clean["Parsed_Date"].dt.month
+    df_clean["Day"] = df_clean["Parsed_Date"].dt.day
+    
+    # Count emails per day (you can modify this to track specific types of emails)
+    df_clean["Email_Count"] = 1
+    
+    # Aggregate by day
+    daily_email = df_clean.groupby(["Year", "Month", "Day"]).agg({
+        "Email_Count": "sum"
+    }).reset_index()
+    
+    # Create proper date column for plotting
+    daily_email["Date"] = pd.to_datetime(
+        daily_email[["Year", "Month", "Day"]]
+    )
+    return daily_email
 
 # Keep the monthly functions for analysis (with error handling)
 def prepare_sales_data(df):
@@ -289,6 +353,37 @@ def prepare_social_data(df):
     )
     return monthly_social
 
+def prepare_email_data(df):
+    """Process email data and aggregate by month"""
+    # Create a copy to avoid modifying original
+    df_clean = df.copy()
+    
+    # Parse dates
+    df_clean["Parsed_Date"] = df_clean["Date"].apply(parse_email_date)
+    df_clean = df_clean.dropna(subset=["Parsed_Date"])
+    df_clean["Parsed_Date"] = pd.to_datetime(df_clean["Parsed_Date"])
+    
+    # Extract year and month
+    df_clean["Year"] = df_clean["Parsed_Date"].dt.year
+    df_clean["Month"] = df_clean["Parsed_Date"].dt.month
+    
+    # Count emails per month
+    df_clean["Email_Count"] = 1
+    
+    # Aggregate by month
+    monthly_email = df_clean.groupby(["Year", "Month"]).agg({
+        "Email_Count": "sum"
+    }).reset_index()
+    
+    # Create proper date column for plotting (first day of each month)
+    monthly_email["Date"] = pd.to_datetime(
+        monthly_email[["Year", "Month"]].assign(DAY=1)
+    )
+    monthly_email["Month_Name"] = monthly_email["Month"].apply(
+        lambda x: calendar.month_abbr[x]
+    )
+    return monthly_email
+
 # =========== Analysis Functions ==========
 def analyze_best_posting_times(social_df, sales_df, wp_sales_df):
     """Analyze data to recommend best posting times"""
@@ -310,9 +405,9 @@ def analyze_best_posting_times(social_df, sales_df, wp_sales_df):
         if not monthly_social.empty:
             best_social_month = monthly_social.loc[monthly_social["Total_Score"].idxmax(), "Month"]
             best_month_name = calendar.month_name[best_social_month]
-            recommendations.append(f"📈 **Best social media month**: {best_month_name} (highest engagement)")
+            recommendations.append(f"Best social media month: {best_month_name} (highest engagement)")
     except:
-        recommendations.append("📈 Social media data analysis unavailable")
+        recommendations.append("Social media data analysis unavailable")
     
     # Analyze sales patterns
     try:
@@ -342,9 +437,9 @@ def analyze_best_posting_times(social_df, sales_df, wp_sales_df):
         if not monthly_sales.empty:
             best_sales_month = monthly_sales.loc[monthly_sales["Value"].idxmax(), "Month"]
             best_sales_month_name = calendar.month_name[best_sales_month]
-            recommendations.append(f"💰 **Best sales month**: {best_sales_month_name} (highest revenue)")
+            recommendations.append(f"Best sales month: {best_sales_month_name} (highest revenue)")
     except:
-        recommendations.append("💰 Sales pattern analysis unavailable")
+        recommendations.append("Sales pattern analysis unavailable")
     
     # Correlation analysis
     try:
@@ -364,13 +459,13 @@ def analyze_best_posting_times(social_df, sales_df, wp_sales_df):
         if len(merged_data) > 1:
             correlation = merged_data["Total_Score"].corr(merged_data["Amount"])
             if correlation > 0.5:
-                recommendations.append("🔗 **Strong positive correlation** between social engagement and sales")
+                recommendations.append("Strong positive correlation between social engagement and sales")
             elif correlation > 0.2:
-                recommendations.append("🔗 **Moderate correlation** between social engagement and sales")
+                recommendations.append("Moderate correlation between social engagement and sales")
             else:
-                recommendations.append("🔗 **Weak correlation** between social engagement and sales")
+                recommendations.append("Weak correlation between social engagement and sales")
     except:
-        recommendations.append("🔗 Correlation analysis unavailable")
+        recommendations.append("Correlation analysis unavailable")
     
 
     
@@ -424,17 +519,20 @@ try:
     daily_sales = prepare_daily_sales_data(sales_df)
     daily_wp_sales = prepare_daily_wp_sales_data(wp_sales_df)
     daily_social = prepare_daily_social_data(social_df)
+    daily_email = prepare_daily_email_data(email_df)
 
     # Prepare monthly data for analysis (keeping existing functionality)
     monthly_sales = prepare_sales_data(sales_df)
     monthly_wp_sales = prepare_wp_sales_data(wp_sales_df)
     monthly_social = prepare_social_data(social_df)
+    monthly_email = prepare_email_data(email_df)
 
     # Get available years from all the dfs
     available_years = sorted(
         set(daily_sales["Year"].unique()).union(
             set(daily_social["Year"].unique()),
-            set(daily_wp_sales["Year"].unique())
+            set(daily_wp_sales["Year"].unique()),
+            set(daily_email["Year"].unique())
         )
     )
 
@@ -448,17 +546,20 @@ try:
     daily_sales_filtered = daily_sales[daily_sales["Year"] == selected_year]
     daily_wp_sales_filtered = daily_wp_sales[daily_wp_sales["Year"] == selected_year]
     daily_social_filtered = daily_social[daily_social["Year"] == selected_year]
+    daily_email_filtered = daily_email[daily_email["Year"] == selected_year]
 
     # Filter monthly data by selected year (for analysis)
     sales_filtered = monthly_sales[monthly_sales["Year"] == selected_year]
     wp_sales_filtered = monthly_wp_sales[monthly_wp_sales["Year"] == selected_year]
     social_filtered = monthly_social[monthly_social["Year"] == selected_year]
+    email_filtered = monthly_email[monthly_email["Year"] == selected_year]
 
     # Combine daily data for shared x-axis
     combined_daily_data = pd.concat([
         daily_sales_filtered.assign(Type="Sales"),
         daily_wp_sales_filtered.assign(Type="Live"),
-        daily_social_filtered.assign(Type="Social")
+        daily_social_filtered.assign(Type="Social"),
+        daily_email_filtered.assign(Type="Email")
     ])
 
 except Exception as e:
@@ -471,6 +572,7 @@ except Exception as e:
     sales_filtered = pd.DataFrame()
     wp_sales_filtered = pd.DataFrame()
     social_filtered = pd.DataFrame()
+    email_filtered = pd.DataFrame()
 
 # ====================== Content =====================
 tab_main, tab_sales, tab_social, tab_email, tab_payment_count = st.tabs([
@@ -535,8 +637,8 @@ def calculate_social_scores(df):
     else:
         df_clean['Engagement_Bonus'] = 0
     
-    # Final total score
-    df_clean['Total_Score'] = df_clean['Platform_Score'] + df_clean['Engagement_Bonus']
+    # Final total score - ensure numeric type
+    df_clean['Total_Score'] = pd.to_numeric(df_clean['Platform_Score'] + df_clean['Engagement_Bonus'], errors='coerce')
     
     return df_clean
 
@@ -567,7 +669,81 @@ def analyze_cross_platform_performance(social_df):
     
     return platform_performance
 
-def analyze_temporal_patterns(social_df, sales_df, wp_sales_df):
+def analyze_email_sales_correlation(daily_email, daily_sales, daily_wp_sales):
+    """Analyze correlation between email activity and sales"""
+    recommendations = []
+    
+    try:
+        if daily_email.empty or (daily_sales.empty and daily_wp_sales.empty):
+            recommendations.append("Need more data for email-sales correlation analysis")
+            return recommendations
+        
+        # Combine sales data
+        combined_sales = daily_sales.merge(
+            daily_wp_sales[['Date', 'Total Amount']], 
+            on='Date', 
+            how='outer'
+        )
+        combined_sales['Total_Sales'] = combined_sales['Amount'].fillna(0) + combined_sales['Total Amount'].fillna(0)
+        
+        # Merge email and sales data
+        merged_data = daily_email.merge(
+            combined_sales[['Date', 'Total_Sales']], 
+            on='Date', 
+            how='inner'
+        )
+        
+        if len(merged_data) > 1:
+            # Calculate correlation
+            correlation = merged_data['Email_Count'].corr(merged_data['Total_Sales'])
+            
+            if not pd.isna(correlation):
+                if correlation > 0.5:
+                    recommendations.append(f"Strong positive correlation between email activity and sales (r={correlation:.2f})")
+                elif correlation > 0.2:
+                    recommendations.append(f"Moderate positive correlation between email activity and sales (r={correlation:.2f})")
+                elif correlation > -0.2:
+                    recommendations.append(f"Weak correlation between email activity and sales (r={correlation:.2f})")
+                else:
+                    recommendations.append(f"Negative correlation between email activity and sales (r={correlation:.2f})")
+                
+                # Analyze email impact on sales days
+                email_days = merged_data[merged_data['Email_Count'] > 0]
+                no_email_days = merged_data[merged_data['Email_Count'] == 0]
+                
+                if len(email_days) > 0 and len(no_email_days) > 0:
+                    avg_sales_with_email = email_days['Total_Sales'].mean()
+                    avg_sales_without_email = no_email_days['Total_Sales'].mean()
+                    
+                    if avg_sales_with_email > avg_sales_without_email:
+                        boost_percentage = ((avg_sales_with_email - avg_sales_without_email) / avg_sales_without_email * 100) if avg_sales_without_email > 0 else float('inf')
+                        recommendations.append(f"Sales on email days are {boost_percentage:.1f}% higher than non-email days")
+                    else:
+                        recommendations.append("No significant sales boost observed on email days")
+                
+                # Look for lag effects (emails today affecting sales tomorrow)
+                if len(merged_data) > 2:
+                    merged_data_sorted = merged_data.sort_values('Date')
+                    email_today = merged_data_sorted['Email_Count'].iloc[:-1]
+                    sales_tomorrow = merged_data_sorted['Total_Sales'].iloc[1:]
+                    
+                    if len(email_today) == len(sales_tomorrow):
+                        lag_correlation = email_today.corr(sales_tomorrow)
+                        if not pd.isna(lag_correlation) and abs(lag_correlation) > 0.3:
+                            if lag_correlation > 0:
+                                recommendations.append(f"Emails today show positive correlation with sales tomorrow (r={lag_correlation:.2f})")
+                            else:
+                                recommendations.append(f"Emails today show negative correlation with sales tomorrow (r={lag_correlation:.2f})")
+        
+        else:
+            recommendations.append("Insufficient overlapping data for email-sales correlation analysis")
+            
+    except Exception as e:
+        recommendations.append(f"Email-sales correlation analysis limited: {str(e)}")
+    
+    return recommendations
+
+def analyze_temporal_patterns(social_df, sales_df, wp_sales_df, email_df):
     """Analyze time-based patterns for recommendations"""
     recommendations = []
     
@@ -576,9 +752,10 @@ def analyze_temporal_patterns(social_df, sales_df, wp_sales_df):
         daily_social = prepare_daily_social_data(social_df)
         daily_sales = prepare_daily_sales_data(sales_df)
         daily_wp_sales = prepare_daily_wp_sales_data(wp_sales_df)
+        daily_email = prepare_daily_email_data(email_df)
         
         if daily_social.empty or (daily_sales.empty and daily_wp_sales.empty):
-            recommendations.append("📊 Need more data for temporal pattern analysis")
+            recommendations.append("Need more data for temporal pattern analysis")
             return recommendations
         
         # Merge data for lag analysis
@@ -614,35 +791,38 @@ def analyze_temporal_patterns(social_df, sales_df, wp_sales_df):
         
         if abs(best_correlation) > 0.3:
             if best_lag == 0:
-                recommendations.append(f"🎯 **Immediate Impact**: Social media shows immediate correlation with sales (r={best_correlation:.2f})")
+                recommendations.append(f"Social media shows immediate correlation with sales (r={best_correlation:.2f})")
             else:
-                recommendations.append(f"🎯 **Delayed Impact**: Social media today correlates with sales {best_lag} day(s) later (r={best_correlation:.2f})")
+                recommendations.append(f"Social media today correlates with sales {best_lag} day(s) later (r={best_correlation:.2f})")
         else:
-            recommendations.append("📊 **Weak Correlation**: No strong immediate correlation found between social posts and sales")
+            recommendations.append("No strong immediate correlation found between social posts and sales")
         
-        # Best performing days of week
+        # Best performing days of week - fix the dtype issue
         df_clean = calculate_social_scores(social_df)
         df_clean["Parsed_Date"] = df_clean["Date"].apply(parse_social_date)
         df_clean = df_clean.dropna(subset=["Parsed_Date"])
         df_clean["Parsed_Date"] = pd.to_datetime(df_clean["Parsed_Date"])
         df_clean["DayOfWeek"] = df_clean["Parsed_Date"].dt.day_name()
         
+        # Ensure Total_Score is numeric before grouping
+        df_clean['Total_Score'] = pd.to_numeric(df_clean['Total_Score'], errors='coerce')
         weekday_performance = df_clean.groupby("DayOfWeek")["Total_Score"].mean().sort_values(ascending=False)
+        
         if not weekday_performance.empty:
             best_day = weekday_performance.index[0]
-            recommendations.append(f"📅 **Best Posting Day**: {best_day} has highest average engagement")
+            recommendations.append(f"Best posting day: {best_day} has highest average engagement")
         
         # Platform-specific recommendations
         platform_perf = analyze_cross_platform_performance(social_df)
         if not platform_perf.empty:
             best_platform = platform_perf.loc[platform_perf['Avg_Score'].idxmax(), 'Platform']
-            recommendations.append(f"📱 **Top Platform**: {best_platform.capitalize()} delivers highest average engagement")
+            recommendations.append(f"Top platform: {best_platform.capitalize()} delivers highest average engagement")
             
             # Check if any platform is underutilized but effective
             efficient_platforms = platform_perf[platform_perf['Post_Count'] < platform_perf['Post_Count'].median()]
             if not efficient_platforms.empty:
                 efficient_platform = efficient_platforms.loc[efficient_platforms['Avg_Score'].idxmax(), 'Platform']
-                recommendations.append(f"💡 **Opportunity**: Consider posting more on {efficient_platform.capitalize()} - it shows good engagement with fewer posts")
+                recommendations.append(f"Opportunity: Consider posting more on {efficient_platform.capitalize()} - it shows good engagement with fewer posts")
         
         # Content gap analysis (based on your sample data)
         corporate_posts = social_df[social_df['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
@@ -652,10 +832,10 @@ def analyze_temporal_patterns(social_df, sales_df, wp_sales_df):
             if len(other_posts) > 0:
                 avg_other_score = calculate_social_scores(other_posts)['Total_Score'].mean()
                 if avg_corporate_score > avg_other_score * 1.2:
-                    recommendations.append("🌟 **Content Strength**: Corporate training posts perform 20%+ better than average - consider expanding this content")
+                    recommendations.append("Corporate training posts perform 20%+ better than average - consider expanding this content")
         
     except Exception as e:
-        recommendations.append(f"📊 Pattern analysis limited: {str(e)}")
+        recommendations.append(f"Pattern analysis limited: {str(e)}")
     
     return recommendations
 
@@ -691,21 +871,21 @@ def analyze_seasonal_trends(monthly_social, monthly_sales, monthly_wp_sales):
             best_sales_month_name = calendar.month_name[best_sales_month]
             best_social_month_name = calendar.month_name[best_social_month]
             
-            recommendations.append(f"📈 **Seasonal Peak Sales**: {best_sales_month_name} historically strongest for revenue")
-            recommendations.append(f"👥 **Seasonal Peak Engagement**: {best_social_month_name} historically best for social engagement")
+            recommendations.append(f"Seasonal peak sales: {best_sales_month_name} historically strongest for revenue")
+            recommendations.append(f"Seasonal peak engagement: {best_social_month_name} historically best for social engagement")
             
             # Check alignment
             if best_sales_month == best_social_month:
-                recommendations.append(f"🎯 **Perfect Alignment**: {best_sales_month_name} is peak for both sales AND engagement - maximize efforts this month!")
+                recommendations.append(f"Perfect alignment: {best_sales_month_name} is peak for both sales AND engagement - maximize efforts this month!")
             else:
-                recommendations.append(f"🔄 **Strategic Planning**: Consider increasing social activity in {best_social_month_name} to build momentum for {best_sales_month_name} sales peak")
+                recommendations.append(f"Strategic planning: Consider increasing social activity in {best_social_month_name} to build momentum for {best_sales_month_name} sales peak")
         
     except Exception as e:
-        recommendations.append("📅 Seasonal analysis limited by available data")
+        recommendations.append("Seasonal analysis limited by available data")
     
     return recommendations
 
-def create_performance_metrics(sales_df, wp_sales_df, social_df):
+def create_performance_metrics(sales_df, wp_sales_df, social_df, email_df):
     """Create key performance metrics with proper error handling"""
     metrics = {}
     
@@ -739,6 +919,13 @@ def create_performance_metrics(sales_df, wp_sales_df, social_df):
                 platforms = social_scored['Platform'].nunique()
                 metrics["platform_diversity"] = platforms
         
+        # Email metrics
+        if not email_df.empty:
+            metrics["total_emails"] = len(email_df)
+            # Count training emails specifically
+            training_emails = email_df[email_df['Sender'].str.contains('training', case=False, na=False)]
+            metrics["training_emails"] = len(training_emails)
+        
         # Growth metrics - ensure we're counting valid rows
         valid_sales = len(sales_df[sales_df["Amount"].notna()]) if "Amount" in sales_df.columns else 0
         valid_wp_sales = len(wp_sales_df[wp_sales_df["Total Amount"].notna()]) if "Total Amount" in wp_sales_df.columns else 0
@@ -755,14 +942,16 @@ def create_performance_metrics(sales_df, wp_sales_df, social_df):
             "avg_engagement": 0,
             "max_engagement": 0,
             "total_posts": 0,
-            "platform_diversity": 0
+            "platform_diversity": 0,
+            "total_emails": 0,
+            "training_emails": 0
         }
     
     return metrics
 
 # =========== Enhanced Analytics Tab Section ==========
 with tab_main:
-    st.header(f"Daily Sales vs Social Performance ({selected_year})")
+    st.header(f"Daily Sales vs Social vs Email Performance ({selected_year})")
     
     if not combined_daily_data.empty:
         # Create base chart with daily x-axis
@@ -794,8 +983,16 @@ with tab_main:
             tooltip=['Date', 'Total_Score']
         )
 
+        # Email scatter - daily (added email data point)
+        email_scatter = base.transform_filter(
+            alt.datum.Type == "Email"
+        ).mark_circle(color='orange', size=40).encode(
+            y=alt.Y('Email_Count:Q', title='Email Count', scale=alt.Scale(zero=False)),
+            tooltip=['Date', 'Email_Count']
+        )
+
         # Combine charts
-        combined_chart = alt.layer(sales_line, wp_sales_line, social_scatter).resolve_scale(
+        combined_chart = alt.layer(sales_line, wp_sales_line, social_scatter, email_scatter).resolve_scale(
             y='shared'
         ).properties(
             width=800,
@@ -805,7 +1002,7 @@ with tab_main:
         st.altair_chart(combined_chart, use_container_width=True)
         
         # Graph Key
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             st.markdown("🔵 **Blue**: Thinkific")
@@ -813,9 +1010,11 @@ with tab_main:
             st.markdown("🟢 **Green**: Live Webinar") 
         with col3:
             st.markdown("🔴 **Red**: Social Engagement")
+        with col4:
+            st.markdown("🟠 **Orange**: Email Count")
         
         # Metrics
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             total_sales = sales_filtered["Amount"].sum() if not sales_filtered.empty else 0
             total_wp_sales = wp_sales_filtered["Total Amount"].sum() if not wp_sales_filtered.empty else 0
@@ -826,13 +1025,16 @@ with tab_main:
             st.metric("Total Live Webinar Sales", f"£{total_wp_sales:,.0f}")
         with col3:
             st.metric("Total Thinkific Sales", f"£{total_sales:,.0f}")
+        with col4:
+            total_emails = email_filtered["Email_Count"].sum() if not email_filtered.empty else 0
+            st.metric("Total Emails", f"{total_emails}")
 
         st.divider()
         st.header("Enhanced Analytics")
         
         # Performance Metrics
         st.subheader("Key Performance Indicators")
-        metrics = create_performance_metrics(sales_df, wp_sales_df, social_df)
+        metrics = create_performance_metrics(sales_df, wp_sales_df, social_df, email_df)
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -845,13 +1047,18 @@ with tab_main:
             st.metric("Total Customers", f"{metrics.get('total_customers', 0)}")
 
         # Enhanced Analytics Section
-        st.subheader("🎯 Data-Driven Recommendations")
+        st.subheader("Data-Driven Recommendations")
+        
+        # Email-Sales Correlation Analysis
+        st.subheader("Email Marketing Impact")
+        email_recommendations = analyze_email_sales_correlation(daily_email, daily_sales, daily_wp_sales)
+        for recommendation in email_recommendations:
+            st.write(recommendation)
         
         # Cross-platform analysis
+        st.subheader("Platform Performance Analysis")
         platform_perf = analyze_cross_platform_performance(social_df)
         if not platform_perf.empty:
-            st.write("**Platform Performance Analysis:**")
-            
             # Create metrics for top platforms
             top_platform = platform_perf.loc[platform_perf['Avg_Score'].idxmax()]
             most_active_platform = platform_perf.loc[platform_perf['Post_Count'].idxmax()]
@@ -878,19 +1085,19 @@ with tab_main:
             st.info("No platform performance data available")
         
         # Temporal patterns
-        st.subheader("📊 Engagement & Sales Patterns")
-        temporal_recommendations = analyze_temporal_patterns(social_df, sales_df, wp_sales_df)
+        st.subheader("Engagement and Sales Patterns")
+        temporal_recommendations = analyze_temporal_patterns(social_df, sales_df, wp_sales_df, email_df)
         for recommendation in temporal_recommendations:
             st.write(recommendation)
         
         # Seasonal trends
-        st.subheader("📅 Seasonal Trends")
+        st.subheader("Seasonal Trends")
         seasonal_recommendations = analyze_seasonal_trends(monthly_social, monthly_sales, monthly_wp_sales)
         for recommendation in seasonal_recommendations:
             st.write(recommendation)
 
         # Content Performance Analysis
-        st.subheader("📝 Content Performance")
+        st.subheader("Content Performance")
         try:
             social_scored = calculate_social_scores(social_df)
             
@@ -927,7 +1134,7 @@ with tab_main:
                     # Content recommendations
                     best_content = content_df.loc[content_df['Avg Score'].idxmax()]
                     if best_content['Performance'] == 'High':
-                        st.success(f"🌟 **Content Insight**: {best_content['Content Type']} posts perform best with average score of {best_content['Avg Score']:.1f}")
+                        st.success(f"Content Insight: {best_content['Content Type']} posts perform best with average score of {best_content['Avg Score']:.1f}")
                 else:
                     st.info("Add more post content to enable content performance analysis")
                 
@@ -935,7 +1142,7 @@ with tab_main:
             st.info("Content analysis requires more post data for deeper insights")
 
         # Data Summary
-        st.subheader("📊 Data Summary")
+        st.subheader("Data Summary")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -945,8 +1152,7 @@ with tab_main:
         with col3:
             st.metric("Webinar Sales", len(wp_sales_df))
         with col4:
-            total_engagement = social_scored['Total_Score'].sum() if not social_scored.empty and 'Total_Score' in social_scored.columns else 0
-            st.metric("Total Engagement Score", f"{total_engagement:.0f}")
+            st.metric("Emails", len(email_df))
 
     else:
         st.warning("No data available for the selected year.")
@@ -970,34 +1176,57 @@ with tab_email:
 with tab_payment_count:
     st.header("Sales by User")
 
-    group = sales_df.groupby("Email address")
-    total_amount = group["Amount"].sum().reset_index(name="Amount")
-    purchase_counts = sales_df["Email address"].value_counts().reset_index(name = "Purchase Count")
-    purchase_counts["Amount Spent"] = total_amount["Amount"]
-    purchase_counts.columns = ["Email address", "Purchase Count", "Amount Spent"]
-    
-    wp_group = wp_sales_df.groupby("Email address")
-    total_wp_amount = wp_group["Total Amount"].sum().reset_index(name="Total Amount")
+    # Thinkific Sales - using "Email address" column
+    if "Email address" in sales_df.columns:
+        group = sales_df.groupby("Email address")
+        total_amount = group["Amount"].sum().reset_index(name="Amount")
+        purchase_counts = sales_df["Email address"].value_counts().reset_index(name="Purchase Count")
+        purchase_counts["Amount Spent"] = total_amount["Amount"]
+        purchase_counts.columns = ["Email address", "Purchase Count", "Amount Spent"]
+        
+        st.subheader("Thinkific Sales")
+        st.write(purchase_counts)
+    else:
+        st.warning("Thinkific sales data: 'Email address' column not found")
+        purchase_counts = pd.DataFrame()
 
-    purchase_counts_wp = wp_sales_df["Email address"].value_counts().reset_index()
-    purchase_counts_wp["Amount Spent"] = total_wp_amount["Total Amount"]
-    purchase_counts_wp.columns = ["Email address", "Purchase Count", "Amount Spent"]
+    # WordPress Sales - using "Email" column  
+    if "Email" in wp_sales_df.columns:
+        wp_group = wp_sales_df.groupby("Email")
+        total_wp_amount = wp_group["Total Amount"].sum().reset_index(name="Total Amount")
+        purchase_counts_wp = wp_sales_df["Email"].value_counts().reset_index()
+        purchase_counts_wp["Amount Spent"] = total_wp_amount["Total Amount"]
+        purchase_counts_wp.columns = ["Email", "Purchase Count", "Amount Spent"]
+        
+        st.subheader("Live Webinar Sales")
+        st.write(purchase_counts_wp)
+    else:
+        st.warning("WordPress sales data: 'Email' column not found")
+        purchase_counts_wp = pd.DataFrame()
 
-    st.subheader("Thinkific Sales")
-    st.write(purchase_counts)
-    st.subheader("Live Webinar Sales")
-    st.write(purchase_counts_wp)
-
-    #combine counts
-    st.subheader("Combined Data")
-    combine_counts = pd.concat([purchase_counts, purchase_counts_wp], ignore_index=True)
-    combined_group = combine_counts.groupby("Email address")
-    total_group = combined_group["Purchase Count"].sum().reset_index(name = "Purchase Count")
-    total_group_amount = combined_group["Amount Spent"].sum().reset_index(name = "Amount Spent")
-    combine_counts["Purchase Count"] = total_group["Purchase Count"]
-    combine_counts["Amount Spent"] = total_group_amount["Amount Spent"]
-
-    st.write(combine_counts)
-
+    # Combine counts if both datasets are available
+    if not purchase_counts.empty and not purchase_counts_wp.empty:
+        st.subheader("Combined Data")
+        # Rename columns to be consistent before combining
+        purchase_counts_renamed = purchase_counts.rename(columns={"Email address": "Email"})
+        purchase_counts_wp_renamed = purchase_counts_wp.rename(columns={"Email": "Email"})
+        
+        combine_counts = pd.concat([purchase_counts_renamed, purchase_counts_wp_renamed], ignore_index=True)
+        combined_group = combine_counts.groupby("Email")
+        total_group = combined_group["Purchase Count"].sum().reset_index(name="Purchase Count")
+        total_group_amount = combined_group["Amount Spent"].sum().reset_index(name="Amount Spent")
+        
+        # Create final combined dataframe
+        final_combined = pd.DataFrame({
+            "Email": total_group["Email"],
+            "Purchase Count": total_group["Purchase Count"],
+            "Amount Spent": total_group_amount["Amount Spent"]
+        })
+        
+        st.write(final_combined)
+    elif not purchase_counts.empty or not purchase_counts_wp.empty:
+        st.info("Only one dataset available for combination")
+    else:
+        st.warning("No sales data available for analysis")
 
 st.divider()
