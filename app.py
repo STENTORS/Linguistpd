@@ -1109,51 +1109,6 @@ with tab_main:
         for recommendation in seasonal_recommendations:
             st.write(recommendation)
 
-        # Content Performance Analysis
-        st.subheader("Content Performance")
-        try:
-            social_scored = calculate_social_scores(social_df)
-            
-            if not social_scored.empty:
-                # Analyze content themes from your sample data
-                content_analysis = []
-                
-                # Corporate training posts (from your sample)
-                corporate_posts = social_scored[social_scored['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
-                if len(corporate_posts) > 0:
-                    corp_avg_score = corporate_posts['Total_Score'].mean()
-                    content_analysis.append({
-                        'Content Type': 'Corporate Training',
-                        'Posts': len(corporate_posts),
-                        'Avg Score': corp_avg_score,
-                        'Performance': 'High' if corp_avg_score > social_scored['Total_Score'].mean() * 1.2 else 'Average'
-                    })
-                
-                # Other content analysis can be added based on your actual post content
-                other_posts = social_scored[~social_scored['Post'].str.contains('corporate|CPD|NHS|government', case=False, na=False)]
-                if len(other_posts) > 0:
-                    other_avg_score = other_posts['Total_Score'].mean()
-                    content_analysis.append({
-                        'Content Type': 'Other Content',
-                        'Posts': len(other_posts),
-                        'Avg Score': other_avg_score,
-                        'Performance': 'High' if other_avg_score > social_scored['Total_Score'].mean() * 1.2 else 'Average'
-                    })
-                
-                if content_analysis:
-                    content_df = pd.DataFrame(content_analysis)
-                    st.dataframe(content_df, use_container_width=True)
-                    
-                    # Content recommendations
-                    best_content = content_df.loc[content_df['Avg Score'].idxmax()]
-                    if best_content['Performance'] == 'High':
-                        st.success(f"Content Insight: {best_content['Content Type']} posts perform best with average score of {best_content['Avg Score']:.1f}")
-                else:
-                    st.info("Add more post content to enable content performance analysis")
-                
-        except Exception as e:
-            st.info("Content analysis requires more post data for deeper insights")
-
         # Data Summary
         st.subheader("Data Summary")
         
