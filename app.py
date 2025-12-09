@@ -1027,20 +1027,19 @@ with tab_main:
             st.markdown("🟠 **Orange**: Email Count")
         
         # Metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
+        col, col1,col2, col3 = st.columns(4)
+        with col:
             total_sales = sales_filtered["Amount"].sum() if not sales_filtered.empty else 0
             total_wp_sales = wp_sales_filtered["Total Amount"].sum() if not wp_sales_filtered.empty else 0
             total_all_sales = total_sales + total_wp_sales
-            st.metric("Total Sales", f"£{total_all_sales:,.2f}")
-        
+            st.metric("Total Yearly Revenue", total_all_sales.round(1))
+
+        with col1:
+            st.metric("Total Yearly Sales", len(wp_sales_df+sales_df))
         with col2:
-            st.metric("Total Live Webinar Sales", f"£{total_wp_sales:,.0f}")
+            st.metric("Total Yearly Webinar Sales", f"£{total_wp_sales:,.0f}")
         with col3:
-            st.metric("Total Thinkific Sales", f"£{total_sales:,.0f}")
-        with col4:
-            total_emails = email_filtered["Email_Count"].sum() if not email_filtered.empty else 0
-            st.metric("Total Emails", f"{total_emails}")
+            st.metric("Total Yearly Thinkific Sales", f"£{total_sales:,.0f}")
 
         st.divider()
         st.header("Enhanced Analytics")
@@ -1049,14 +1048,16 @@ with tab_main:
         st.subheader("Key Performance Indicators")
         metrics = create_performance_metrics(sales_df, wp_sales_df, social_df, email_df)
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2 = st.columns(2)
         with col1:
-            st.metric("Total Revenue", f"£{metrics.get('total_revenue', 0):,.2f}")
+            st.metric("Total Revenue", f"£{metrics.get('total_revenue', 0).round(1)}")
         with col2:
-            st.metric("Thinkific Revenue", f"£{metrics.get('thinkific_revenue', 0):,.2f}")
-        with col3:
-            st.metric("Webinar Revenue", f"£{metrics.get('webinar_revenue', 0):,.2f}")
-        with col4:
+            st.metric("Thinkific Revenue", f"£{metrics.get('thinkific_revenue', 0).round(1)}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Webinar Revenue", f"£{metrics.get('webinar_revenue', 0).round(1)}")
+        with col2:
             st.metric("Total Customers", f"{metrics.get('total_customers', 0)}")
 
         # Enhanced Analytics Section
