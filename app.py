@@ -504,9 +504,22 @@ def create_performance_metrics(sales_df, wp_sales_df, social_df):
     
     return metrics
 
+
+
 # ====================== Main Application =====================
 st.logo("lpd-logo.png", size="large")
 st.title("Linguistpd Admin Dashboard")
+
+st.set_page_config(
+    page_title="Linguistpd Dashboard",
+    page_icon="favicon.jpg",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://www.extremelycoolapp.com/help',
+        'Report a bug': "https://www.extremelycoolapp.com/bug",
+        'About': "# This is a header. This is an *extremely* cool app!"
+    }
+)
 
 # Login system
 #    if not check_password():
