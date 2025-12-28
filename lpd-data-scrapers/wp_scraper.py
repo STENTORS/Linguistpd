@@ -7,27 +7,43 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 import gspread
+import json
 from oauth2client.service_account import ServiceAccountCredentials
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+WP_USERNAME = os.environ["WP_USERNAME"]
+WP_PASSWORD = os.environ["WP_PASSWORD"]
 
-# Get WordPress credentials from .env
-WP_USERNAME = os.getenv('WP_USERNAME')
-WP_PASSWORD = os.getenv('WP_PASSWORD')
 
 # ---------------- GOOGLE SHEETS SETUP ----------------
 SHEET_NAME = "WordPress Sales Data"
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
+
+def create_keyfile_dict():
+    variables_keys = {
+        "type": os.environ.get("SHEET_TYPE"),
+        "project_id": os.environ.get("SHEET_PROJECT_ID"),
+        "private_key_id": os.environ.get("SHEET_PRIVATE_KEY_ID"),
+        "private_key": os.environ.get("SHEET_PRIVATE_KEY"),
+        "client_email": os.environ.get("SHEET_CLIENT_EMAIL"),
+        "client_id": os.environ.get("SHEET_CLIENT_ID"),
+        "auth_uri": os.environ.get("SHEET_AUTH_URI"),
+        "token_uri": os.environ.get("SHEET_TOKEN_URI"),
+        "auth_provider_x509_cert_url": os.environ.get("SHEET_AUTH_PROVIDER_X509_CERT_URL"),
+        "client_x509_cert_url": os.environ.get("SHEET_CLIENT_X509_CERT_URL"),
+    }
+    return variables_keys
+
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(create_keyfile_dict(), SCOPE)
 client = gspread.authorize(creds)
+
+
 sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
-#options.add_argument("--headless")  
+options.add_argument("--headless")  
 driver = webdriver.Firefox(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)

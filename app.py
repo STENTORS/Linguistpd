@@ -8,8 +8,12 @@ import hmac
 from dotenv import load_dotenv
 import calendar
 from dateutil import parser
+import subprocess
+import json
+import sys
 
 load_dotenv()
+
 
 # =========== Sheet Connections ==========
 
@@ -1199,3 +1203,124 @@ with tab_payment_count:
         st.warning("No sales data available for analysis")
 
 st.divider()
+
+
+#=====running the external scraper scrits======
+
+
+st.header("Data Loaders")
+st.write("Run to get the latest data - they might take a while it they havent been ran in a while :/")
+
+
+
+wp_loader, email_loader, social_loader = st.columns(3)
+
+#somehow functional pulling cerds from the tmol
+with wp_loader:
+    if st.button("WordPress data loader"):
+
+        wp_user = st.secrets.wp_credentials.WP_USERNAME
+        wp_pass = st.secrets.wp_credentials.WP_PASSWORD
+        sa = st.secrets.gcp_service_account
+
+        env = os.environ.copy()
+        env["WP_USERNAME"] = wp_user
+        env["WP_PASSWORD"] = wp_pass
+
+
+        # mapping the service account info
+        env["SHEET_TYPE"] = sa.type
+        env["SHEET_PROJECT_ID"] = sa.project_id
+        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
+        env["SHEET_PRIVATE_KEY"] = sa.private_key
+        env["SHEET_CLIENT_EMAIL"] = sa.client_email
+        env["SHEET_CLIENT_ID"] = sa.client_id
+        env["SHEET_AUTH_URI"] = sa.auth_uri
+        env["SHEET_TOKEN_URI"] = sa.token_uri
+        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
+        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
+
+
+        result = subprocess.run(
+            [sys.executable, "lpd-data-scrapers/wp_scraper.py"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            st.error(f"Error: {result.stderr}")
+        else:
+            st.success(result.stdout)
+
+
+with email_loader:
+    if st.button('email data loader'):
+        email_user = st.secrets.email_credentials.MAIL_ADR
+        email_pass = st.secrets.email_credentials.PASSWD
+        sa = st.secrets.gcp_service_account
+
+
+        env = os.environ.copy()
+        env["MAIL_ADR"] = email_user
+        env["PASSWD"] = email_pass
+        
+
+        # mapping the service account info
+        env["SHEET_TYPE"] = sa.type
+        env["SHEET_PROJECT_ID"] = sa.project_id
+        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
+        env["SHEET_PRIVATE_KEY"] = sa.private_key
+        env["SHEET_CLIENT_EMAIL"] = sa.client_email
+        env["SHEET_CLIENT_ID"] = sa.client_id
+        env["SHEET_AUTH_URI"] = sa.auth_uri
+        env["SHEET_TOKEN_URI"] = sa.token_uri
+        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
+        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
+
+        result = subprocess.run(
+            [sys.executable, "lpd-data-scrapers/email_data.py"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            st.error(f"Error: {result.stderr}")
+        else:
+            st.success(result.stdout)
+
+with social_loader:
+    if st.button('social data loader'):
+        buffer_user = st.secrets.buffer_credentials.buffer_user
+        buffer_pass = st.secrets.buffer_credentials.buffer_pass
+        sa = st.secrets.gcp_service_account
+
+        env = os.environ.copy()
+        env["buffer_user"] = buffer_user
+        env["buffer_pass"] = buffer_pass
+
+        # mapping the service account info
+        env["SHEET_TYPE"] = sa.type
+        env["SHEET_PROJECT_ID"] = sa.project_id
+        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
+        env["SHEET_PRIVATE_KEY"] = sa.private_key
+        env["SHEET_CLIENT_EMAIL"] = sa.client_email
+        env["SHEET_CLIENT_ID"] = sa.client_id
+        env["SHEET_AUTH_URI"] = sa.auth_uri
+        env["SHEET_TOKEN_URI"] = sa.token_uri
+        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
+        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
+
+
+        result = subprocess.run(
+            [sys.executable, "lpd-data-scrapers/buffer.py"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            st.error(f"Error: {result.stderr}")
+        else:
+            st.success(result.stdout)
