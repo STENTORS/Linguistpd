@@ -11,6 +11,10 @@ import gspread
 import os
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+
 
 buffer_user = os.environ["buffer_user"]
 buffer_pass = os.environ["buffer_pass"]
@@ -78,15 +82,24 @@ def login():
     enter_login = driver.find_element(By.ID, "login-form-submit")
     enter_login.click()
 
+def setup_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    # WebDriver Manager automatically downloads the correct ChromeDriver
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(create_keyfile_dict(), SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
-options = webdriver.ChromeOptions()
-#options.add_argument("--headless")  
-driver = webdriver.Chrome(options=options)
+driver = setup_driver()
 driver.get("https://publish.buffer.com/all-channels?tab=sent")
 
 wait = WebDriverWait(driver, 20)

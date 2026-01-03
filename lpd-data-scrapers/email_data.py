@@ -10,6 +10,9 @@ import gspread
 import os
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
 
 # Load environment variables
 load_dotenv()
@@ -72,13 +75,20 @@ def get_last_sheet_date(sheet):
     except Exception as e:
         return None
 
-# ---------------- SELENIUM SETUP ----------------
-options = webdriver.ChromeOptions()
-#options.add_argument("--headless")  
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
 
-driver = webdriver.Chrome(options=options)
+def setup_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    # WebDriver Manager automatically downloads the correct ChromeDriver
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
+
+# ---------------- SELENIUM SETUP ----------------
+driver = setup_driver()
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
 

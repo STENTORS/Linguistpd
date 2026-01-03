@@ -9,10 +9,26 @@ from selenium.webdriver.common.keys import Keys
 import gspread
 import json
 from oauth2client.service_account import ServiceAccountCredentials
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+
 
 WP_USERNAME = os.environ["WP_USERNAME"]
 WP_PASSWORD = os.environ["WP_PASSWORD"]
 
+
+
+def setup_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    # WebDriver Manager automatically downloads the correct ChromeDriver
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
 
 # ---------------- GOOGLE SHEETS SETUP ----------------
 SHEET_NAME = "WordPress Sales Data"
@@ -42,9 +58,7 @@ client = gspread.authorize(creds)
 sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
-options = webdriver.ChromeOptions()
-#options.add_argument("--headless")  
-driver = webdriver.Chrome(options=options)
+driver = setup_driver()
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
 
