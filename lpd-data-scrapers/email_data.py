@@ -73,12 +73,12 @@ def get_last_sheet_date(sheet):
         return None
 
 # ---------------- SELENIUM SETUP ----------------
-options = webdriver.FirefoxOptions()
+options = webdriver.ChromeOptions()
 options.add_argument("--headless")  
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 
-driver = webdriver.Firefox(options=options)
+driver = webdriver.Chrome(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
 
