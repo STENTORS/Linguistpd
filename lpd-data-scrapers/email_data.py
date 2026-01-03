@@ -74,7 +74,7 @@ def get_last_sheet_date(sheet):
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")  
+#options.add_argument("--headless")  
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 

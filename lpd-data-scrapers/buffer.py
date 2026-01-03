@@ -85,7 +85,7 @@ sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")  
+#options.add_argument("--headless")  
 driver = webdriver.Chrome(options=options)
 driver.get("https://publish.buffer.com/all-channels?tab=sent")
 

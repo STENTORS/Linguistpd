@@ -43,7 +43,7 @@ sheet = client.open(SHEET_NAME).sheet1
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")  
+#options.add_argument("--headless")  
 driver = webdriver.Chrome(options=options)
 wait = WebDriverWait(driver, 20)
 actions = ActionChains(driver)
