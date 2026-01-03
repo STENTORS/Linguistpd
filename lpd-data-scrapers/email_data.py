@@ -64,14 +64,12 @@ def get_last_sheet_date(sheet):
             try:
                 last_date = datetime.strptime(last_date_str, "%d/%m/%Y")
             except ValueError:
-                print(f"Could not parse date: {last_date_str}\n")
                 return None
         
         print(f"Last date in sheet: {last_date}\n")
         return last_date
         
     except Exception as e:
-        print(f"Error getting last sheet date: {e}\n")
         return None
 
 # ---------------- SELENIUM SETUP ----------------
@@ -138,7 +136,6 @@ def extract_email_headers(last_date=None):
         
         # Get all email rows
         email_rows = driver.find_elements(By.CSS_SELECTOR, "tr.message")
-        print(f"Found {len(email_rows)} emails matching search\n")
         
         email_data = []
         new_emails_found = 0
@@ -163,7 +160,6 @@ def extract_email_headers(last_date=None):
                     # Try to parse date (adjust format as needed)
                     email_date = parse_email_date(date_str)
                 except Exception as e:
-                    print(f"Could not parse email date: {date_str}, error: {e}\n")
                     email_date = None
                 
                 # Check if this email is newer than the last one in sheet
@@ -183,10 +179,8 @@ def extract_email_headers(last_date=None):
                 new_emails_found += 1
                 
             except Exception as e:
-                print(f"Error extracting email data: {e}\n")
                 continue
         
-        print(f"Found {new_emails_found} new emails since last update\n")
         return email_data
         
     except Exception as e:
@@ -220,16 +214,10 @@ def parse_email_date(date_str):
 
 def save_to_google_sheets(data, sheet):
     """Save only new email headers to Google Sheets"""
-    if not sheet:
-        print("Google Sheets not configured - printing data instead\n")
-        for i, email in enumerate(data, 1):
-            print(f"{i}. {email['date_str']} | {email['sender']} | {email['subject']}")
-        return
     
     try:
         # Don't clear existing data - just append new rows
         if len(data) == 0:
-            print("No new emails to save\n")
             return
         
         # Add new email data
@@ -274,11 +262,9 @@ def main():
             
             # Get all existing dates to avoid duplicates
             existing_dates = get_all_email_dates(sheet)
-            print(f"Found {len(existing_dates)} existing dates in sheet\n")
         else:
             last_date = None
             existing_dates = set()
-            print("Sheet not available, will fetch all emails\n")
         
         # Login to email
         login_system()
@@ -295,8 +281,7 @@ def main():
             for email in email_data:
                 if email['date_str'] not in existing_dates:
                     filtered_data.append(email)
-                else:
-                    print(f"Duplicate found, skipping: {email['date_str']}\n")
+                
             email_data = filtered_data
         
         # Save only new emails to Google Sheets
@@ -305,7 +290,6 @@ def main():
         # Print summary
         print(f"\n=== SUMMARY ===\n")
         print(f"Total new emails found: {len(email_data)}\n")
-        print(f"Data saved to Google Sheets: {'Yes' if sheet else 'No (sheet not configured)'}zn")
         
     except Exception as e:
         print(f"Main execution error: {e}\n")
@@ -314,7 +298,6 @@ def main():
         # Clean up
         time.sleep(2)
         driver.quit()
-        print("\nScript completed")
 
 if __name__ == "__main__":
     main()
