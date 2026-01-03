@@ -105,7 +105,6 @@ while True:
         break
     last_height = new_height
 
-print("✅ Finished scrolling")
 
 # --- MAIN SCRAPE FUNTIONALITY  ---
 
@@ -113,8 +112,7 @@ last_date = get_last_date(sheet)
 wrapper = driver.find_element(By.CLASS_NAME, "publish_timeline_qL9zu")
 elements = wrapper.find_elements(By.XPATH, "./*")
 
-# Header row
-data = [["Date", "Time", "Platform", "Post", "Likes/Reactions", "Comments", "Impressions", "Shares", "Clicks/Eng. Rate", "Total Social Score"]]
+data = []
 current_date = None
 
 for block in elements:
@@ -218,7 +216,6 @@ for block in elements:
 driver.quit()
 
 # --- Upload to Google Sheets ---
-sheet.clear()
-sheet.update("A1", data)
-print(f"✅ Uploaded {len(data)-1} posts to Google Sheet: {SHEET_NAME}")
-print(f"New posts: {new_post}")
+for row in data:
+    sheet.append_row(row)
+print(f"✅ Uploaded {len(data)} posts")
