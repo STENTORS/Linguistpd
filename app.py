@@ -1206,121 +1206,184 @@ st.divider()
 
 
 #=====running the external scraper scrits======
-
+import wp_scraper, email_data, buffer
+try:
+    import wp_scraper, email_data, buffer
+    IMPORT_SUCCESS = True
+except ImportError:
+    IMPORT_SUCCESS = False
+    st.warning("⚠️ Could not import scraper modules directly. Make sure they are in your PYTHONPATH.")
 
 st.header("Data Loaders")
-st.write("Run to get the latest data - they might take a while it they havent been ran in a while :/")
+st.write("Run to get the latest data - they might take a while if they haven't been run in a while :/")
 
+def setup_environment_from_secrets():
+    """Setup environment variables from Streamlit secrets"""
+    sa = st.secrets.gcp_service_account
+    
+    env_vars = {
+        # WordPress credentials
+        "WP_USERNAME": st.secrets.wp_credentials.WP_USERNAME,
+        "WP_PASSWORD": st.secrets.wp_credentials.WP_PASSWORD,
+        
+        # Email credentials
+        "MAIL_ADR": st.secrets.email_credentials.MAIL_ADR,
+        "PASSWD": st.secrets.email_credentials.PASSWD,
+        
+        # Buffer credentials
+        "buffer_user": st.secrets.buffer_credentials.buffer_user,
+        "buffer_pass": st.secrets.buffer_credentials.buffer_pass,
+        
+        # Google Sheets service account
+        "SHEET_TYPE": sa.type,
+        "SHEET_PROJECT_ID": sa.project_id,
+        "SHEET_PRIVATE_KEY_ID": sa.private_key_id,
+        "SHEET_PRIVATE_KEY": sa.private_key,
+        "SHEET_CLIENT_EMAIL": sa.client_email,
+        "SHEET_CLIENT_ID": sa.client_id,
+        "SHEET_AUTH_URI": sa.auth_uri,
+        "SHEET_TOKEN_URI": sa.token_uri,
+        "SHEET_AUTH_PROVIDER_X509_CERT_URL": sa.auth_provider_x509_cert_url,
+        "SHEET_CLIENT_X509_CERT_URL": sa.client_x509_cert_url
+    }
+    
+    # Set environment variables
+    for key, value in env_vars.items():
+        os.environ[key] = value
+    
+    return env_vars
 
+def run_with_progress_and_fallback(scraper_function, scraper_name, fallback_script=None):
+    """Run scraper with progress indicators and fallback to subprocess if needed"""
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    output_container = st.empty()
+    
+    try:
+        # Update progress
+        status_text.text(f"🔄 Starting {scraper_name}...")
+        progress_bar.progress(10)
+        
+        # Run the scraper function
+        status_text.text(f"🔄 Running {scraper_name}...")
+        progress_bar.progress(30)
+        
+        result = scraper_function()
+        
+        # Simulate progress updates (you can replace with actual progress callbacks)
+        progress_bar.progress(70)
+        status_text.text(f"✅ {scraper_name} completed!")
+        progress_bar.progress(100)
+        
+        # Display result
+        if result and hasattr(result, 'stdout'):
+            output_container.success(result.stdout if result.stdout else f"{scraper_name} completed successfully!")
+        else:
+            output_container.success(f"{scraper_name} completed successfully!")
+            
+        # Add timestamp
+        st.caption(f"Last run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+    except Exception as e:
+        # If direct import fails and we have a fallback script
+        if not IMPORT_SUCCESS and fallback_script:
+            status_text.text(f"⚠️ Falling back to subprocess for {scraper_name}...")
+            import subprocess
+            
+            # Run with subprocess as fallback
+            result = subprocess.run(
+                [sys.executable, fallback_script],
+                env=os.environ.copy(),
+                capture_output=True,
+                text=True,
+            )
+            
+            if result.returncode != 0:
+                status_text.text(f"❌ {scraper_name} failed!")
+                output_container.error(f"Error: {result.stderr}")
+            else:
+                status_text.text(f"✅ {scraper_name} completed (via fallback)!")
+                progress_bar.progress(100)
+                output_container.success(result.stdout)
+        else:
+            # Direct error
+            status_text.text(f"❌ {scraper_name} failed!")
+            output_container.error(f"Error: {str(e)}")
+            st.exception(e)  # Show full traceback for debugging
+    
+    finally:
+        # Small delay before clearing progress indicators
+        import time
+        time.sleep(2)
+        progress_bar.empty()
+        status_text.empty()
+
+# Setup environment once
+env_vars = setup_environment_from_secrets()
 
 wp_loader, email_loader, social_loader = st.columns(3)
 
-#somehow functional pulling cerds from the tmol
 with wp_loader:
-    if st.button("WordPress data loader"):
-
-        wp_user = st.secrets.wp_credentials.WP_USERNAME
-        wp_pass = st.secrets.wp_credentials.WP_PASSWORD
-        sa = st.secrets.gcp_service_account
-
-        env = os.environ.copy()
-        env["WP_USERNAME"] = wp_user
-        env["WP_PASSWORD"] = wp_pass
-
-
-        # mapping the service account info
-        env["SHEET_TYPE"] = sa.type
-        env["SHEET_PROJECT_ID"] = sa.project_id
-        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
-        env["SHEET_PRIVATE_KEY"] = sa.private_key
-        env["SHEET_CLIENT_EMAIL"] = sa.client_email
-        env["SHEET_CLIENT_ID"] = sa.client_id
-        env["SHEET_AUTH_URI"] = sa.auth_uri
-        env["SHEET_TOKEN_URI"] = sa.token_uri
-        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
-        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
-
-
-        result = subprocess.run(
-            [sys.executable, "lpd-data-scrapers/wp_scraper.py"],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            st.error(f"Error: {result.stderr}")
+    if st.button("WordPress data loader", type="primary"):
+        st.info("Loading WordPress data...")
+        
+        if IMPORT_SUCCESS:
+            # Direct function call - you need to define or modify your wp_scraper module
+            # Example: wp_scraper.main() should be a callable function
+            run_with_progress_and_fallback(
+                scraper_function=wp_scraper.main,  # Change to your actual function name
+                scraper_name="WordPress Scraper",
+                fallback_script="lpd-data-scrapers/wp_scraper.py"
+            )
         else:
-            st.success(result.stdout)
-
+            # Fallback to subprocess
+            run_with_progress_and_fallback(
+                scraper_function=None,
+                scraper_name="WordPress Scraper",
+                fallback_script="lpd-data-scrapers/wp_scraper.py"
+            )
 
 with email_loader:
-    if st.button('email data loader'):
-        email_user = st.secrets.email_credentials.MAIL_ADR
-        email_pass = st.secrets.email_credentials.PASSWD
-        sa = st.secrets.gcp_service_account
-
-
-        env = os.environ.copy()
-        env["MAIL_ADR"] = email_user
-        env["PASSWD"] = email_pass
+    if st.button('Email data loader', type="primary"):
+        st.info("Loading email data...")
         
-
-        # mapping the service account info
-        env["SHEET_TYPE"] = sa.type
-        env["SHEET_PROJECT_ID"] = sa.project_id
-        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
-        env["SHEET_PRIVATE_KEY"] = sa.private_key
-        env["SHEET_CLIENT_EMAIL"] = sa.client_email
-        env["SHEET_CLIENT_ID"] = sa.client_id
-        env["SHEET_AUTH_URI"] = sa.auth_uri
-        env["SHEET_TOKEN_URI"] = sa.token_uri
-        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
-        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
-
-        result = subprocess.run(
-            [sys.executable, "lpd-data-scrapers/email_data.py"],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            st.error(f"Error: {result.stderr}")
+        if IMPORT_SUCCESS:
+            run_with_progress_and_fallback(
+                scraper_function=email_data.main,  # Change to your actual function name
+                scraper_name="Email Scraper",
+                fallback_script="lpd-data-scrapers/email_data.py"
+            )
         else:
-            st.success(result.stdout)
+            run_with_progress_and_fallback(
+                scraper_function=None,
+                scraper_name="Email Scraper",
+                fallback_script="lpd-data-scrapers/email_data.py"
+            )
 
 with social_loader:
-    if st.button('social data loader'):
-        buffer_user = st.secrets.buffer_credentials.buffer_user
-        buffer_pass = st.secrets.buffer_credentials.buffer_pass
-        sa = st.secrets.gcp_service_account
-
-        env = os.environ.copy()
-        env["buffer_user"] = buffer_user
-        env["buffer_pass"] = buffer_pass
-
-        # mapping the service account info
-        env["SHEET_TYPE"] = sa.type
-        env["SHEET_PROJECT_ID"] = sa.project_id
-        env["SHEET_PRIVATE_KEY_ID"] = sa.private_key_id
-        env["SHEET_PRIVATE_KEY"] = sa.private_key
-        env["SHEET_CLIENT_EMAIL"] = sa.client_email
-        env["SHEET_CLIENT_ID"] = sa.client_id
-        env["SHEET_AUTH_URI"] = sa.auth_uri
-        env["SHEET_TOKEN_URI"] = sa.token_uri
-        env["SHEET_AUTH_PROVIDER_X509_CERT_URL"] = sa.auth_provider_x509_cert_url
-        env["SHEET_CLIENT_X509_CERT_URL"] = sa.client_x509_cert_url
-
-
-        result = subprocess.run(
-            [sys.executable, "lpd-data-scrapers/buffer.py"],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            st.error(f"Error: {result.stderr}")
+    if st.button('Social data loader', type="primary"):
+        st.info("Loading social media data...")
+        
+        if IMPORT_SUCCESS:
+            run_with_progress_and_fallback(
+                scraper_function=buffer.main,  # Change to your actual function name
+                scraper_name="Social Media Scraper",
+                fallback_script="lpd-data-scrapers/buffer.py"
+            )
         else:
-            st.success(result.stdout)
+            run_with_progress_and_fallback(
+                scraper_function=None,
+                scraper_name="Social Media Scraper",
+                fallback_script="lpd-data-scrapers/buffer.py"
+            )
+
+with st.expander("Debug Information"):
+    st.write("Environment variables set:")
+    for key in ['WP_USERNAME', 'MAIL_ADR', 'buffer_user', 'SHEET_CLIENT_EMAIL']:
+        if key in os.environ:
+            st.write(f"**{key}**: {'✓ Set' if os.environ[key] else '✗ Empty'}")
+        else:
+            st.write(f"**{key}**: ✗ Not set")
+    
+    st.write(f"Direct import possible: {'✓ Yes' if IMPORT_SUCCESS else '✗ No'}")

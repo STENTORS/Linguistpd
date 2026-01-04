@@ -13,34 +13,51 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 
-
-WP_USERNAME = os.environ["WP_USERNAME"]
-WP_PASSWORD = os.environ["WP_PASSWORD"]
-
-
-
 def setup_driver():
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    
-    # WebDriver Manager automatically downloads the correct ChromeDriver
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
-
-# ---------------- GOOGLE SHEETS SETUP ----------------
-SHEET_NAME = "WordPress Sales Data"
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
+    """Setup Selenium WebDriver with Chrome"""
+    try:
+        # Configure Chrome options for cloud environments
+        chrome_options = Options()
+        
+        # Essential for cloud/headless environments
+        chrome_options.add_argument("--headless")  # Run without GUI
+        chrome_options.add_argument("--no-sandbox")  # Bypass OS security model
+        chrome_options.add_argument("--disable-dev-shm-usage")  # Avoid /dev/shm issues
+        chrome_options.add_argument("--disable-gpu")  # GPU not available in cloud
+        chrome_options.add_argument("--window-size=1920,1080")
+        
+        # For newer Chrome versions
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        
+        # Cloud environments often have Chrome pre-installed at specific locations
+        chrome_options.binary_location = os.getenv("GOOGLE_CHROME_BIN", "/usr/bin/google-chrome")
+        
+        # Use webdriver-manager to automatically manage ChromeDriver
+        # This handles downloading the correct version automatically
+        service = Service(ChromeDriverManager().install())
+        
+        # Create driver with explicit service
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        return driver
+        
+    except Exception as e:
+        print(f"Error setting up Chrome driver: {e}")
+        # Fallback to traditional method
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
 
 def create_keyfile_dict():
+    """Create Google Sheets credentials dictionary from environment variables"""
     variables_keys = {
         "type": os.environ.get("SHEET_TYPE"),
         "project_id": os.environ.get("SHEET_PROJECT_ID"),
         "private_key_id": os.environ.get("SHEET_PRIVATE_KEY_ID"),
-        "private_key": os.environ.get("SHEET_PRIVATE_KEY"),
+        "private_key": os.environ.get("SHEET_PRIVATE_KEY", "").replace('\\n', '\n'),
         "client_email": os.environ.get("SHEET_CLIENT_EMAIL"),
         "client_id": os.environ.get("SHEET_CLIENT_ID"),
         "auth_uri": os.environ.get("SHEET_AUTH_URI"),
@@ -50,31 +67,39 @@ def create_keyfile_dict():
     }
     return variables_keys
 
+def initialize_google_sheets():
+    """Initialize Google Sheets connection"""
+    SHEET_NAME = "WordPress Sales Data"
+    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(create_keyfile_dict(), SCOPE)
+        client = gspread.authorize(creds)
+        sheet = client.open(SHEET_NAME).sheet1
+        return sheet
+    except Exception as e:
+        print(f"Error initializing Google Sheets: {e}")
+        return None
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(create_keyfile_dict(), SCOPE)
-client = gspread.authorize(creds)
-
-
-sheet = client.open(SHEET_NAME).sheet1
-
-# ---------------- SELENIUM SETUP ----------------
-driver = setup_driver()
-wait = WebDriverWait(driver, 20)
-actions = ActionChains(driver)
-
-# Store the specific page URL for latest orders
-PAGE_1_URL = "https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list&paged=1"
-
-# ---------------- AUTOMATIC WORDPRESS LOGIN ----------------
-def login_to_wordpress():
+def login_to_wordpress(driver, wait):
     """Automatically log in to WordPress"""
     print("Logging in to WordPress...")
+    
+    # Store the specific page URL for latest orders
+    PAGE_1_URL = "https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list&paged=1"
     
     # Go to login page using page 1 URL
     driver.get(PAGE_1_URL)
     
     # Wait for login form to load
     wait.until(EC.presence_of_element_located((By.ID, "user_login")))
+    
+    # Get credentials from environment
+    WP_USERNAME = os.environ.get("WP_USERNAME")
+    WP_PASSWORD = os.environ.get("WP_PASSWORD")
+    
+    if not WP_USERNAME or not WP_PASSWORD:
+        raise ValueError("WordPress credentials not found in environment variables")
     
     # Find login fields using the correct selectors from your HTML
     username_field = driver.find_element(By.ID, "user_login")
@@ -91,11 +116,15 @@ def login_to_wordpress():
     try:
         driver.find_element(By.ID, "wp-submit").click()
     except:
-        driver.find_element(By.ID, "cn-accept-cookie").click()
-        time.sleep(2)
-        driver.find_element(By.ID, "wp-submit").click()
+        # Handle cookie consent if present
+        try:
+            driver.find_element(By.ID, "cn-accept-cookie").click()
+            time.sleep(2)
+            driver.find_element(By.ID, "wp-submit").click()
+        except:
+            driver.find_element(By.ID, "wp-submit").click()
 
-def get_last_order_id_from_sheet():
+def get_last_order_id_from_sheet(sheet):
     """Get the last order ID from the Google Sheet to know where to start"""
     try:
         # Get all records from the sheet
@@ -115,11 +144,15 @@ def get_last_order_id_from_sheet():
         print(f"Error reading from Google Sheet: {e}")
         return None
 
-def scrape_new_orders_from_page(last_known_order_id):
+def scrape_new_orders_from_page(driver, wait, last_known_order_id):
     """Scrape only new orders from the current page (top to bottom) until we hit last_known_order_id"""
     new_orders_data = []
+    PAGE_1_URL = "https://linguistpd.co.uk/wp-admin/edit.php?post_type=wpsc_cart_orders&mode=list&paged=1"
     
     try:
+        driver.get(PAGE_1_URL)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "iedit")))
+        
         table = driver.find_elements(By.CLASS_NAME, "iedit")
         print(f"Found {len(table)} orders on page 1")
         
@@ -171,6 +204,7 @@ def scrape_new_orders_from_page(last_known_order_id):
                 except Exception as detail_error:
                     print(f"  Could not find order details: {detail_error}")
                     order = "N/A"
+                    amount = "N/A"
                 
                 # Close the tab and switch back to main window
                 driver.close()
@@ -197,7 +231,7 @@ def scrape_new_orders_from_page(last_known_order_id):
     
     return new_orders_data
 
-def append_to_sheet(new_orders_data):
+def append_to_sheet(sheet, new_orders_data):
     """Append new orders to the Google Sheet"""
     if not new_orders_data:
         print("No new orders to append.")
@@ -215,51 +249,84 @@ def append_to_sheet(new_orders_data):
     except Exception as e:
         print(f"Error appending to Google Sheet: {e}")
 
-# ---------------- MAIN EXECUTION ----------------
-
-# First, check the last order ID in the existing sheet
-last_known_order_id = get_last_order_id_from_sheet()
-
-# Attempt automatic login
-login_to_wordpress()
-loggedin = False
-while not loggedin:
-    try:
-        driver.find_element(By.CLASS_NAME, "iedit")
-        loggedin = True
-    except:
-        time.sleep(5)
-
-new_orders_data = []
-
-try:
-    # Only scrape Page 1 for new orders
-    print("=== CHECKING FOR NEW ORDERS ON PAGE 1 ===")
-    driver.get(PAGE_1_URL)
-    wait.until(EC.presence_of_element_located((By.CLASS_NAME, "iedit")))
+def main():
+    """Main function to be called from Streamlit app"""
+    print("Starting WordPress scraper...")
     
-    # Scrape only new orders (from top to bottom until we hit last known order)
-    new_orders_data = scrape_new_orders_from_page(last_known_order_id)
+    # Check for required environment variables
+    if not os.environ.get("WP_USERNAME") or not os.environ.get("WP_PASSWORD"):
+        return "Error: WordPress credentials (WP_USERNAME, WP_PASSWORD) not found in environment"
     
-    if new_orders_data:
-        print(f"Found {len(new_orders_data)} new orders to append.")
-    else:
-        print("No new orders found since last scrape.")
-
-except Exception as e:
-    print(f"Error during scraping process: {e}")
-
-finally:
-    driver.quit()
-
-# --- Append new orders to Google Sheets ---
-if new_orders_data:
+    # Initialize components
+    driver = None
     try:
-        append_to_sheet(new_orders_data)
-        print(f"\n=== UPDATE COMPLETE ===")
-        print(f"Successfully added {len(new_orders_data)} new orders to the spreadsheet!")
+        # Setup Selenium
+        driver = setup_driver()
+        wait = WebDriverWait(driver, 20)
+        
+        # Initialize Google Sheets
+        sheet = initialize_google_sheets()
+        if not sheet:
+            return "Error: Could not initialize Google Sheets connection"
+        
+        # Check the last order ID in the existing sheet
+        last_known_order_id = get_last_order_id_from_sheet(sheet)
+        
+        # Login to WordPress
+        login_to_wordpress(driver, wait)
+        
+        # Verify login
+        loggedin = False
+        login_attempts = 0
+        while not loggedin and login_attempts < 5:
+            try:
+                driver.find_element(By.CLASS_NAME, "iedit")
+                loggedin = True
+            except:
+                time.sleep(5)
+                login_attempts += 1
+                print(f"Login verification attempt {login_attempts}/5")
+        
+        if not loggedin:
+            return "Error: Could not verify WordPress login"
+        
+        # Scrape new orders
+        new_orders_data = []
+        print("=== CHECKING FOR NEW ORDERS ON PAGE 1 ===")
+        
+        new_orders_data = scrape_new_orders_from_page(driver, wait, last_known_order_id)
+        
+        if new_orders_data:
+            print(f"Found {len(new_orders_data)} new orders to append.")
+        else:
+            print("No new orders found since last scrape.")
+        
+        # Append to Google Sheets
+        if new_orders_data:
+            append_to_sheet(sheet, new_orders_data)
+            result_message = f"✅ Successfully added {len(new_orders_data)} new orders to the spreadsheet!"
+        else:
+            result_message = "✅ No new orders found since last scrape. Spreadsheet is up to date."
+        
+        return result_message
+        
     except Exception as e:
-        print(f"Error updating Google Sheets: {e}")
-else:
-    print("\n=== NO UPDATES NEEDED ===")
-    print("No new orders found since last scrape.")
+        error_msg = f"❌ Error during WordPress scraping: {str(e)}"
+        print(error_msg)
+        return error_msg
+        
+    finally:
+        # Ensure driver is closed
+        if driver:
+            try:
+                driver.quit()
+                print("Chrome driver closed.")
+            except:
+                pass
+
+# Keep this for backward compatibility if running as a standalone script
+if __name__ == "__main__":
+    result = main()
+    print(result)
+    import sys
+    sys.exit(0 if "✅" in result or "Successfully" in result else 1)
