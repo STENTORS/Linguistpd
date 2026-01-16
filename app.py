@@ -1046,10 +1046,10 @@ with tab_main:
             st.metric("Total Yearly Thinkific Sales", f"£{total_sales:,.0f}")
 
         st.divider()
-        st.header("Enhanced Analytics")
+        st.header("Analytics (all data)")
         
         # Performance Metrics
-        st.subheader("Key Performance Indicators")
+        st.subheader("Total Metrics")
         metrics = create_performance_metrics(sales_df, wp_sales_df, social_df, email_df)
         
         col1, col2 = st.columns(2)
@@ -1065,7 +1065,7 @@ with tab_main:
             st.metric("Total Customers", f"{metrics.get('total_customers', 0)}")
 
         # Enhanced Analytics Section
-        st.subheader("Data-Driven Recommendations")
+        st.subheader("Recommendations")
         
         # Email-Sales Correlation Analysis
         st.subheader("Email Marketing Impact")
@@ -1098,9 +1098,9 @@ with tab_main:
                              f"{opportunity_platform['Platform'].capitalize()}",
                              f"{opportunity_platform['Post_Count']} posts")
             
-            st.dataframe(platform_perf, use_container_width=True)
-        else:
-            st.info("No platform performance data available")
+        #     st.dataframe(platform_perf, use_container_width=True)
+        # else:
+        #     st.info("No platform performance data available")
         
         # Temporal patterns
         st.subheader("Engagement and Sales Patterns")
