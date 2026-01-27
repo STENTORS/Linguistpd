@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -162,11 +162,45 @@ def login_system(driver, wait):
         return False
 
 def parse_email_date(date_str):
-    """Parse email date string to datetime object"""
+    """Parse email date string to datetime object, handling various formats including day abbreviations"""
     try:
-        if not date_str:
+        if not date_str or not date_str.strip():
             return None
+        
+        date_str = date_str.strip()
+        
+        # Handle formats like "Wed 14:29" or "Mon 12:01" (day abbreviation + time)
+        if len(date_str.split()) == 2 and ':' in date_str:
+            parts = date_str.split()
+            day_abbr = parts[0]
+            time_str = parts[1]
             
+            # Map day abbreviations to weekday numbers
+            days_map = {
+                'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6,
+                'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 
+                'Friday': 4, 'Saturday': 5, 'Sunday': 6
+            }
+            
+            if day_abbr in days_map:
+                today = datetime.now()
+                current_day = today.weekday()
+                target_day = days_map[day_abbr]
+                
+                # Calculate days difference (find most recent occurrence of that day)
+                days_diff = (current_day - target_day) % 7
+                if days_diff == 0:  # Same day - check if time has passed
+                    hour, minute = map(int, time_str.split(':'))
+                    if today.hour > hour or (today.hour == hour and today.minute >= minute):
+                        email_date = today.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    else:
+                        # Time hasn't passed yet today, so it's from last week
+                        email_date = (today - timedelta(days=7)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+                else:
+                    email_date = (today - timedelta(days=days_diff)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+                
+                return email_date
+        
         # Common date formats in emails
         date_formats = [
             "%d/%m/%Y %H:%M",
@@ -313,12 +347,18 @@ def save_to_google_sheets(data, sheet):
         # Get existing dates to avoid duplicates
         existing_dates = get_all_email_dates(sheet)
         
-        # Filter out any duplicates based on date string
+        # Filter out any duplicates based on formatted date
         filtered_data = []
         duplicates_removed = 0
         
         for email in data:
-            if email['date_str'] not in existing_dates:
+            # Use formatted date for duplicate checking
+            if email['date_obj']:
+                formatted_date = email['date_obj'].strftime("%d/%m/%Y %H:%M")
+            else:
+                formatted_date = email['date_str']
+            
+            if formatted_date not in existing_dates:
                 filtered_data.append(email)
             else:
                 duplicates_removed += 1
@@ -334,8 +374,16 @@ def save_to_google_sheets(data, sheet):
         rows_added = 0
         for email_data in filtered_data:
             try:
+                # Use properly formatted date instead of raw date_str
+                if email_data['date_obj']:
+                    # Format as dd/mm/yyyy HH:MM for consistency
+                    formatted_date = email_data['date_obj'].strftime("%d/%m/%Y %H:%M")
+                else:
+                    # Fallback to original date_str if parsing failed
+                    formatted_date = email_data['date_str']
+                
                 row = [
-                    email_data['date_str'],
+                    formatted_date,
                     email_data['sender'],
                     email_data['subject']
                 ]
@@ -417,6 +465,42 @@ def main():
                 print("Chrome driver closed.")
             except:
                 pass
+
+# Cloud Run HTTP handler
+def cloud_run_handler(request):
+    """
+    HTTP handler for Google Cloud Run
+    This function is called when the Cloud Run service receives an HTTP request.
+    
+    Usage in Cloud Run:
+    1. With Flask (recommended):
+       from flask import Flask, jsonify
+       from email_data import cloud_run_handler
+       app = Flask(__name__)
+       app.route('/', methods=['GET', 'POST'])(lambda: cloud_run_handler(None))
+       if __name__ == '__main__': app.run(host='0.0.0.0', port=8080)
+    
+    2. Direct function call (if using Cloud Run's function framework):
+       Set entry point to: email_data.cloud_run_handler
+    """
+    import json
+    
+    try:
+        result = main()
+        # Return success response as tuple (body, status_code, headers)
+        response_body = json.dumps({
+            'success': True,
+            'message': result
+        })
+        return (response_body, 200, {'Content-Type': 'application/json'})
+    except Exception as e:
+        error_msg = f"Error in Cloud Run handler: {str(e)}"
+        print(error_msg)
+        response_body = json.dumps({
+            'success': False,
+            'error': error_msg
+        })
+        return (response_body, 500, {'Content-Type': 'application/json'})
 
 # Keep this for backward compatibility if running as a standalone script
 if __name__ == "__main__":

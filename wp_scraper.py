@@ -324,6 +324,42 @@ def main():
             except:
                 pass
 
+# Cloud Run HTTP handler
+def cloud_run_handler(request):
+    """
+    HTTP handler for Google Cloud Run
+    This function is called when the Cloud Run service receives an HTTP request.
+    
+    Usage in Cloud Run:
+    1. With Flask (recommended):
+       from flask import Flask, jsonify
+       from wp_scraper import cloud_run_handler
+       app = Flask(__name__)
+       app.route('/', methods=['GET', 'POST'])(lambda: cloud_run_handler(None))
+       if __name__ == '__main__': app.run(host='0.0.0.0', port=8080)
+    
+    2. Direct function call (if using Cloud Run's function framework):
+       Set entry point to: wp_scraper.cloud_run_handler
+    """
+    import json
+    
+    try:
+        result = main()
+        # Return success response as tuple (body, status_code, headers)
+        response_body = json.dumps({
+            'success': True,
+            'message': result
+        })
+        return (response_body, 200, {'Content-Type': 'application/json'})
+    except Exception as e:
+        error_msg = f"Error in Cloud Run handler: {str(e)}"
+        print(error_msg)
+        response_body = json.dumps({
+            'success': False,
+            'error': error_msg
+        })
+        return (response_body, 500, {'Content-Type': 'application/json'})
+
 # Keep this for backward compatibility if running as a standalone script
 if __name__ == "__main__":
     result = main()
