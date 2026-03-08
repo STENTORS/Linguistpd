@@ -104,7 +104,7 @@ def get_latest_date_from_sheet(sheet):
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
-# options.add_argument("--headless")
+options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--disable-dev-shm-usage")
 

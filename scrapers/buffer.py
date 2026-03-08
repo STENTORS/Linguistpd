@@ -179,7 +179,7 @@ def scroll_until_stable(driver, latest_known_date):
 
 # ---------------- SELENIUM SETUP ----------------
 options = webdriver.FirefoxOptions()
-# options.add_argument("--headless")
+options.add_argument("--headless")
 driver = webdriver.Firefox(options=options)
 wait = WebDriverWait(driver, 30)
 
